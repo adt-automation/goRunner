@@ -1,7 +1,9 @@
 The API load testing tool is written in the GO programming language to take full advantage of today's modern computing architectures. It can efficiently use all CPU cores in the computer to simulate 100's of thousands of concurrent client connections to the server being tested. The test cases that drive the tool behavior are written using the well known ini file format and these test definition files can be created in any text editor. The test cases that drive the tool are represented mathematically as a finite state machine.
+
  
 The API definition files that define each test, include the following real-time macro scriptable features:
- 
+
+``` 
 API sequence definition (ex: first login, then perform an action, then view history,… )
 HTTP, HTTPS and raw TCP protocol interactions
 Custom AES block encryption support at the message byte level
@@ -13,6 +15,7 @@ MD5 custom checksum calculations
 Timestamp generation
 Key/Value input pairs can be read from an external list and used as macros
 Number base conversions from hex to decimal
+```
  
 All load testing rules and the actual runtime behavior of the tool comes from this ini configuration file and it can all be changed on the fly without program recompilation. This flexibility lends itself to more than just load testing such as the nightly database sync API jobs, unit test script runs.
  
