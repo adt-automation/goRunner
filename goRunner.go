@@ -28,7 +28,7 @@ import (
 	"syscall"
 	"time"
 
-	runner "./golib"
+	runner "github.com/adt-automation/goRunner/golib"
 )
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
