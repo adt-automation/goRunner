@@ -28,7 +28,7 @@ import (
 	"syscall"
 	"time"
 
-	runner "./golib"
+	runner "github.com/gbotreladt/goRunner/golib"
 )
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
