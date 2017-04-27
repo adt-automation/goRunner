@@ -28,7 +28,7 @@ import (
 
 	"gopkg.in/gcfg.v1"
 
-	rmac "./macro"
+	rmac "github.com/adt-automation/goRunner/golib/macro"
 )
 
 type Result struct {
