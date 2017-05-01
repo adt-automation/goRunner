@@ -36,7 +36,6 @@ var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 var (
 	clients        int
 	secsTimedTest  int
-	noRampUp       bool
 	debug          bool
 	dump           bool
 	connectTimeout int
@@ -50,6 +49,7 @@ var (
 	delimeter      string
 	headerExit     bool
 	noHeader       bool
+	rampUp         string
 
 //	wg             sync.WaitGroup
 )
@@ -66,7 +66,8 @@ func init() {
 	flag.IntVar(&secsTimedTest, "t", 0, "Time in seconds for a timed load test")
 	flag.StringVar(&inputFile, "f", "", "Read input from file rather than stdin")
 	flag.StringVar(&inputFile1, "fh", "", "Read input from csv file which has a header row")
-	flag.BoolVar(&noRampUp, "nr", false, "Do not ramp up to total concurrent number of clients")
+	// flag.BoolVar(&noRampUp, "nr", false, "Do not ramp up to total concurrent number of clients")
+	flag.StringVar(&rampUp, "rampUp", "0", "Specify ramp up delay as duration (1m2s, 300ms, ..). 'auto' will compute from client sessions. Default to 0 (no ramp up)")
 	flag.Float64Var(&targetTPS, "targetTPS", 1000000, "The default max TPS is set to 1 million. Good luck reaching this :p")
 	flag.StringVar(&baseUrl, "baseUrl", "", "The host to test. Example https://test2.someserver.org")
 	flag.BoolVar(&debug, "debug", false, "Show the body returned for the api call")
@@ -76,6 +77,7 @@ func init() {
 	flag.BoolVar(&headerExit, "hx", false, "Print output header row and exit")
 	flag.BoolVar(&noHeader, "nh", false, "Suppress output header row. Ignored if hx is set")
 	flag.IntVar(&readTimeout, "readtimeout", 30, "Timeout in seconds for the target API to send the first response byte. Default 30 seconds")
+
 }
 
 /*
@@ -93,7 +95,18 @@ func generateInput() chan string {
 }
 */
 func main() {
+	// ---------------------------------------------------------------------------------------------
+	// Parse flags
 	flag.Parse()
+
+	// ---------------------------------------------------------------------------------------------
+	// Validate input
+	if clients < 1 {
+		fmt.Fprintf(os.Stderr, "\nNumber of concurrent client should be at least 1\n\n")
+		flag.Usage()
+		os.Exit(1)
+	}
+
 	if *cpuprofile != "" {
 		f, err := os.Create(*cpuprofile)
 		if err != nil {
@@ -131,15 +144,22 @@ func main() {
 		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
 
+	rampUpDelay := time.Duration(0)
 	if !headerExit {
 		printSessionSummary(configuration, configFile)
+		if rampUp == "auto" {
+			rampUpDelay = calcRampUpDelay(configuration)
+		} else {
+			var err error
+			rampUpDelay, err = time.ParseDuration(rampUp)
+			if err != nil {
+				fmt.Println("invalid rampUp duration" + err.Error())
+				os.Exit(1)
+			}
+		}
 	}
+	fmt.Fprintf(os.Stderr, "Spacing sessions %v apart to ramp up to %d client sessions\n", rampUpDelay, clients)
 
-	var rampUpDelayMs time.Duration = time.Duration(0)
-	if !headerExit && !noRampUp && clients > 1 {
-		rampUpDelayMs = calcRampUpDelay(configuration)
-		fmt.Fprintf(os.Stderr, "Spacing sessions %v apart to ramp up to %d client sessions\n", rampUpDelayMs, clients)
-	}
 	transportConfig := &tls.Config{InsecureSkipVerify: true} //allow wrong ssl certs
 	tr := &http.Transport{TLSClientConfig: transportConfig}
 	tr.ResponseHeaderTimeout = time.Second * time.Duration(readTimeout)
@@ -152,7 +172,7 @@ func main() {
 		done.Add(1)
 		result := &runner.Result{}
 		results[i] = result
-		clientDelay := rampUpDelayMs * time.Duration(i)
+		clientDelay := rampUpDelay * time.Duration(i)
 		go client(tr, configuration, result, &done, trafficChannel, i, baseUrlFilter, stopTime, clientDelay)
 	}
 
