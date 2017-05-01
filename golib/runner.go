@@ -40,6 +40,14 @@ type Result struct {
 	writeThroughput int32
 }
 
+var Build string
+
+func init() {
+	if Build == "" {
+		Build = "unset"
+	}
+}
+
 var stdoutMutex sync.Mutex
 var Verbose = flag.Bool("verbose", false, "verbose debugging output flag")
 var Keepalive = flag.Bool("keepalive", true, "enable/disable keepalive")
