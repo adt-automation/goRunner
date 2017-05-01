@@ -176,7 +176,7 @@ func PrintLogHeader(inputLine1 string, isInputHeader bool) {
 		}
 	}
 	stdoutMutex.Lock()
-	fmt.Printf("startTime%ccommand%cnextCommand%cstep%crequestType%csessionKey%csession%cgrep1%cgrep2%cid%cshortUrl%cstatusCode%csessionVarsOk%cclientId%cbyteSize%cserver%cduration%cserverDuration%s\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, inputLine1)
+	fmt.Printf("startTime%ccommand%cnextCommand%cstep%crequestType%csessionKey%csession%cgrep1%cgrep2%cid%cshortUrl%cstatusCode%csessionVarsOk%cclientId%cbyteSize%cserver%cduration%cserverDuration%cbuildId%s\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, inputLine1)
 	stdoutMutex.Unlock()
 	if len(cfg.CommandSequence.SessionLog) > 0 {
 		fmt.Fprintf(os.Stderr, "%s\n", strings.Replace(strings.Replace(strings.Replace(cfg.CommandSequence.SessionLog, "{%", "", -1), "{$", "", -1), "}", "", -1))
@@ -802,7 +802,7 @@ func doLogTcp(command string, config *CfgStruct, dump []byte, result *Result, st
 	d := Delimeter[0]
 	const layout = "2006-01-02 15:04:05.000"
 	stdoutMutex.Lock()
-	fmt.Printf("%v%c%s%c%s%c%d%c%s%c%s%c%s%c%s%c%s%c%s%c%s%c%d%c%v%c%d%c%d%c%v%c%.3f%c%.3f%s\n", startTime.Format(layout), d, command, d, nextCommand, d, stepCounter, d, requestType, d, sessionKey, d, session, d, string(grep1), d, string(grep2), d, mdi, d, shortUrl, d, statusCode, d, true, d, clientId, d, byteSize, d, server, d, duration, d, serverTime, inputVals)
+	fmt.Printf("%v%c%s%c%s%c%d%c%s%c%s%c%s%c%s%c%s%c%s%c%s%c%d%c%v%c%d%c%d%c%v%c%.3f%c%.3f%c%s%s\n", startTime.Format(layout), d, command, d, nextCommand, d, stepCounter, d, requestType, d, sessionKey, d, session, d, string(grep1), d, string(grep2), d, mdi, d, shortUrl, d, statusCode, d, true, d, clientId, d, byteSize, d, server, d, duration, d, serverTime, d, Build, inputVals)
 	stdoutMutex.Unlock()
 	return grep1, grep2, continueSession
 }
@@ -1030,7 +1030,7 @@ func doLog(command string, config *CfgStruct, requestType string, resp *http.Res
 	}
 	d := Delimeter[0]
 	stdoutMutex.Lock()
-	fmt.Printf("%v%c%s%c%s%c%d%c%s%c%s%c%s%c%s%c%s%c%s%c%s%c%d%c%v%c%d%c%d%c%v%c%.3f%c%.3f%s\n", startTime.Format(layout), d, command, d, nextCommand, d, stepCounter, d, requestType, d, sessionKey, d, session, d, string(grep1), d, string(grep2), d, mdi, d, shortUrl, d, statusCode, d, foundSessionVars, d, clientId, d, byteSize, d, server, d, duration, d, serverTime, inputVals)
+	fmt.Printf("%v%c%s%c%s%c%d%c%s%c%s%c%s%c%s%c%s%c%s%c%s%c%d%c%v%c%d%c%d%c%v%c%.3f%c%.3f%c%s%s\n", startTime.Format(layout), d, command, d, nextCommand, d, stepCounter, d, requestType, d, sessionKey, d, session, d, string(grep1), d, string(grep2), d, mdi, d, shortUrl, d, statusCode, d, foundSessionVars, d, clientId, d, byteSize, d, server, d, duration, d, serverTime, d, Build, inputVals)
 	stdoutMutex.Unlock()
 	//	if debug {
 	//		fmt.Fprintf(os.Stderr, "BODY [%.3f\t[%v]\t%d]\n\n", startTimeStamp, body, len(body))
