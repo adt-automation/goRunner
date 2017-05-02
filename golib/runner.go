@@ -74,11 +74,6 @@ type CfgStruct struct {
 		DoCall           string
 		MsecDelay        string
 		MsecRepeat       string
-		ReqHeader1       string
-		ReqHeader2       string
-		ReqHeader3       string
-		DoGrep1          string
-		DoGrep2          string
 		Md5Input         string
 		Base64Input      string
 		MustCapture      string
@@ -93,8 +88,6 @@ type CfgStruct struct {
 
 var cfg = CfgStruct{}
 var GrepCommand *regexp.Regexp
-var DoGrep1 *regexp.Regexp
-var DoGrep2 *regexp.Regexp
 var SessionCookieName string
 var Delimeter string
 var CommandQueue []string
@@ -253,11 +246,6 @@ func initRunnerMacros(cfg *CfgStruct) {
 	for _, cmd := range CommandQueue {
 		rmac.InitMacros(cmd, getFieldString(cfg, "ReqBody", cmd))
 		rmac.InitMacros(cmd, getFieldString(cfg, "ReqUrl", cmd))
-		rmac.InitMacros(cmd, getFieldString(cfg, "DoGrep1", cmd))
-		rmac.InitMacros(cmd, getFieldString(cfg, "DoGrep2", cmd))
-		rmac.InitMacros(cmd, getFieldString(cfg, "ReqHeader1", cmd))
-		rmac.InitMacros(cmd, getFieldString(cfg, "ReqHeader2", cmd))
-		rmac.InitMacros(cmd, getFieldString(cfg, "ReqHeader3", cmd))
 		rmac.InitMacros(cmd, getFieldString(cfg, "EncryptIv", cmd))
 		rmac.InitMacros(cmd, getFieldString(cfg, "EncryptKey", cmd))
 		for _, session_var := range cfg.Command[cmd].SessionVar {
@@ -620,17 +608,15 @@ func DoReq(stepCounter int, mdi string, config *CfgStruct, result *Result, clien
 	} else {
 		startTime := time.Now()
 		requestType := getFieldString(config, "ReqType", command)
-		grep1String := rmac.RunnerMacrosRegexp(command, mdi, sessionVars, startTime, getFieldString(config, "DoGrep1", command))
-		grep2String := rmac.RunnerMacrosRegexp(command, mdi, sessionVars, startTime, getFieldString(config, "DoGrep2", command))
 
 		if requestType == "TCP" {
 			tcpReply := tcpReq(mdi, config, command, baseUrl, sessionVars)
 			shortUrl := (baseUrlFilter).ReplaceAllString(baseUrl, "")
-			grep1, grep2, continueSession = doLogTcp(command, config, tcpReply, result, startTime, shortUrl, mdi, clientId, stepCounter, "", grep1String, grep2String)
+			continueSession = doLogTcp(command, config, tcpReply, result, startTime, shortUrl, mdi, clientId, stepCounter, "", sessionVars)
 		} else {
 			req, resp, err := httpReq(mdi, config, command, baseUrl, tr, cookieMap, sessionVars, grep1, grep2, startTime)
 			shortUrl := (baseUrlFilter).ReplaceAllString(req.URL.String(), "")
-			session, _, grep1, grep2, continueSession = doLog(command, config, req.Method, resp, result, err, startTime, shortUrl, mdi, clientId, stepCounter, "", grep1String, grep2String, sessionVars)
+			session, _, grep1, grep2, continueSession = doLog(command, config, req.Method, resp, result, err, startTime, shortUrl, mdi, clientId, stepCounter, "", sessionVars)
 			if resp != nil && resp.Body != nil {
 				resp.Body.Close()
 			}
@@ -709,7 +695,61 @@ func exitStatus(myMap map[string]int32) int {
 	}
 }
 
-func doLogTcp(command string, config *CfgStruct, dump []byte, result *Result, startTime time.Time, shortUrl string, mdi string, clientId int, stepCounter int, lastSession string, grep1String string, grep2String string) (string, string, bool) {
+func findSessionVars(command string, config *CfgStruct, input string, inputData string, startTime time.Time, sessionVars map[string]string, hex bool) (bool, bool) {
+
+	if len(input) <= 2 {
+		// automatically false due to no chance to capture the session var
+		alwaysFoundSessionVars = false
+		return false, false
+	}
+
+	foundSessionVars := true
+	foundMustCaptures := true
+
+	// set any session vars listed for current command, e.g. SessionVar = XTOKEN detail="(.+)"
+	for _, session_var := range cfg.Command[command].SessionVar {
+		s := strings.SplitN(session_var, " ", 2) // s = ['XTOKEN', 'detail="(.+)"']
+		svar := s[0]
+		sgrep := rmac.RunnerMacrosRegexp(command, inputData, sessionVars, startTime, s[1])
+		regex := regexp.MustCompile(sgrep) // /detail="(.+)"/
+		if len(regex.String()) <= 0 {
+			continue
+		}
+
+		svals := regex.FindStringSubmatch(input)
+		limit := 32 // hex only
+		if len(svals) > 1 {
+			if hex {
+				if len(svals[1]) < 32 {
+					limit = len(svals[1])
+				}
+				sessionVars[svar] = svals[1][0:limit]
+			} else {
+				sessionVars[svar] = svals[1] // detail="abcdefg" --> svals[1] = "abcdefg"
+			}
+		} else if len(svals) == 1 && strings.Index(regex.String(), "(") == -1 && strings.Index(regex.String(), ")") == -1 {
+			if hex {
+				if len(svals[0]) < 32 {
+					limit = len(svals[0])
+				}
+				sessionVars[svar] = svals[0][0:limit]
+			} else {
+				sessionVars[svar] = svals[0]
+			}
+
+		} else {
+			fmt.Fprintf(os.Stderr, "ERROR: SessionVar %s from command \"%s\" was not set \n", svar, command)
+			foundSessionVars = false
+			if responseMustCapture(config, svar, command) {
+				foundMustCaptures = false
+			}
+		}
+	}
+	alwaysFoundSessionVars = alwaysFoundSessionVars && foundSessionVars
+	return foundSessionVars, foundMustCaptures
+}
+
+func doLogTcp(command string, config *CfgStruct, dump []byte, result *Result, startTime time.Time, shortUrl string, mdi string, clientId int, stepCounter int, lastSession string, sessionVars map[string]string) bool {
 	var nextCommand string = ""
 	var requestType string = "TCP"
 	var sessionKey string = "0"
@@ -723,7 +763,7 @@ func doLogTcp(command string, config *CfgStruct, dump []byte, result *Result, st
 	var duration float64 = (time.Since(startTime)).Seconds()
 	var hexDump string = fmt.Sprintf("%x", dump)
 	var inputVals = ""
-	var continueSession bool = true
+	inputData := mdi
 
 	if strings.Index(mdi, ",") > -1 {
 		inputSplit := strings.SplitN(mdi, ",", 2)
@@ -742,70 +782,18 @@ func doLogTcp(command string, config *CfgStruct, dump []byte, result *Result, st
 	// no failure cases yet, use these when we add that logic
 	//atomic.AddInt32(&result.networkFailed, 1)
 	//atomic.AddInt32(&result.badFailed, 1)
-
-	grep1regex := regexp.MustCompile(grep1String)
-	if len(grep1regex.String()) > 0 {
-		if len(hexDump) > 2 {
-			cmdArr := grep1regex.FindStringSubmatch(hexDump)
-			if *Verbose {
-				fmt.Fprintf(os.Stderr, "Grep1cmdArr=%v resp dump=[%v]\n\n", cmdArr, hexDump)
-			}
-			if len(cmdArr) > 0 {
-				limit := 32
-				if len(cmdArr) > 1 { //must match in the parenthesis () of the regex
-					if len(cmdArr[1]) < 32 {
-						limit = len(cmdArr[1])
-					}
-					grep1 = cmdArr[1][0:limit]
-				} else if len(cmdArr) == 1 && strings.Index(grep1regex.String(), "(") == -1 && strings.Index(grep1regex.String(), ")") == -1 {
-					if len(cmdArr[0]) < 32 {
-						limit = len(cmdArr[0])
-					}
-					grep1 = cmdArr[0][0:limit]
-				}
-			}
-		}
-		if continueSession && responseMustCapture(config, "DoGrep1", command) {
-			continueSession = len(grep1) > 0
-		}
-	}
-
-	grep2regex := regexp.MustCompile(grep2String)
-	if len(grep2regex.String()) > 0 {
-		if len(hexDump) > 2 {
-			cmdArr := grep2regex.FindStringSubmatch(hexDump)
-			if *Verbose {
-				fmt.Fprintf(os.Stderr, "Grep2cmdArr=%v resp dump=[%v]\n\n", cmdArr, hexDump)
-			}
-			if len(cmdArr) > 0 {
-				limit := 32
-				if len(cmdArr) > 1 { //must match in the parenthesis () of the regex
-					if len(cmdArr[1]) < 32 {
-						limit = len(cmdArr[1])
-					}
-					grep2 = cmdArr[1][0:limit]
-				} else if len(cmdArr) == 1 && strings.Index(grep2regex.String(), "(") == -1 && strings.Index(grep2regex.String(), ")") == -1 {
-					if len(cmdArr[0]) < 32 {
-						limit = len(cmdArr[0])
-					}
-					grep2 = cmdArr[0][0:limit]
-				}
-			}
-		}
-		if continueSession && responseMustCapture(config, "DoGrep2", command) {
-			continueSession = len(grep2) > 0
-		}
-	}
+	foundSessionVars, foundMustCaptures := findSessionVars(command, config, hexDump, inputData, startTime, sessionVars, true)
+	alwaysFoundSessionVars = alwaysFoundSessionVars && foundSessionVars
 
 	d := Delimeter[0]
 	const layout = "2006-01-02 15:04:05.000"
 	stdoutMutex.Lock()
 	fmt.Printf("%v%c%s%c%s%c%d%c%s%c%s%c%s%c%s%c%s%c%s%c%s%c%d%c%v%c%d%c%d%c%v%c%.3f%c%.3f%c%s%s\n", startTime.Format(layout), d, command, d, nextCommand, d, stepCounter, d, requestType, d, sessionKey, d, session, d, string(grep1), d, string(grep2), d, mdi, d, shortUrl, d, statusCode, d, true, d, clientId, d, byteSize, d, server, d, duration, d, serverTime, d, Build, inputVals)
 	stdoutMutex.Unlock()
-	return grep1, grep2, continueSession
+	return foundMustCaptures
 }
 
-func doLog(command string, config *CfgStruct, requestType string, resp *http.Response, result *Result, err error, startTime time.Time, shortUrl string, mdi string, clientId int, stepCounter int, lastSession string, grep1String string, grep2String string, sessionVars map[string]string) (session string, nextCommand string, grep1 string, grep2 string, continueSession bool) {
+func doLog(command string, config *CfgStruct, requestType string, resp *http.Response, result *Result, err error, startTime time.Time, shortUrl string, mdi string, clientId int, stepCounter int, lastSession string, sessionVars map[string]string) (session string, nextCommand string, grep1 string, grep2 string, continueSession bool) {
 
 	atomic.AddInt32(&result.Requests, 1) //atomic++
 	byteSize := 0
@@ -862,46 +850,6 @@ func doLog(command string, config *CfgStruct, requestType string, resp *http.Res
 			fmt.Fprintf(os.Stderr, "ERROR \"%s\" dumping http response to local (cient %d command %s input %s)\n", err.Error(), clientId, command, mdi)
 		}
 
-		grep1regex := regexp.MustCompile(grep1String)
-		if len(grep1regex.String()) > 0 {
-			if len(dump) > 2 {
-				cmdArr := grep1regex.FindStringSubmatch(strings.Replace(string(dump), "\r", "", -1))
-				if *Verbose {
-					fmt.Fprintf(os.Stderr, "Grep1cmdArr=%v resp dump=[%v]\n\n", cmdArr, string(dump))
-				}
-				if len(cmdArr) > 0 {
-					if len(cmdArr) > 1 {
-						grep1 = cmdArr[1] //must match in the parenthesis () of the regex
-					} else if len(cmdArr) == 1 && strings.Index(grep1regex.String(), "(") == -1 && strings.Index(grep1regex.String(), ")") == -1 {
-						grep1 = cmdArr[0]
-					}
-				}
-			}
-			if continueSession && responseMustCapture(config, "DoGrep1", command) {
-				continueSession = len(grep1) > 0
-			}
-		}
-
-		grep2regex := regexp.MustCompile(grep2String)
-		if len(grep2regex.String()) > 0 {
-			if len(dump) > 2 {
-				cmdArr := grep2regex.FindStringSubmatch(strings.Replace(string(dump), "\r", "", -1))
-				if *Verbose {
-					fmt.Fprintf(os.Stderr, "Grep2cmdArr=%v resp dump=[%v]\n\n", cmdArr, string(dump))
-				}
-				if len(cmdArr) > 0 {
-					if len(cmdArr) > 1 {
-						grep2 = cmdArr[1] //must match in the parenthesis () of the regex
-					} else if len(cmdArr) == 1 && strings.Index(grep2regex.String(), "(") == -1 && strings.Index(grep2regex.String(), ")") == -1 {
-						grep2 = cmdArr[0]
-					}
-				}
-			}
-			if continueSession && responseMustCapture(config, "DoGrep2", command) {
-				continueSession = len(grep2) > 0
-			}
-		}
-
 		// set any session vars listed for current command, e.g. SessionVar = XTOKEN detail="(.+)"
 		for _, session_var := range cfg.Command[command].SessionVar {
 			s := strings.SplitN(session_var, " ", 2) // s = ['XTOKEN', 'detail="(.+)"']
@@ -930,9 +878,7 @@ func doLog(command string, config *CfgStruct, requestType string, resp *http.Res
 			}
 		}
 		alwaysFoundSessionVars = alwaysFoundSessionVars && foundSessionVars
-		if *Verbose {
-			println("grep1=", grep1, " grep2=", grep2)
-		}
+
 		if resp.StatusCode >= 200 && resp.StatusCode < 400 { //was300
 			atomic.AddInt32(&result.success, 1) //atomic++
 			/*
