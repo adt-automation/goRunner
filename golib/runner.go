@@ -135,9 +135,7 @@ func getFieldString(config *CfgStruct, field string, command string) string {
 func getFieldInteger(config *CfgStruct, field string, command string) int {
 	var str = getFieldString(config, field, command)
 	data, err := strconv.Atoi(str)
-	if err == nil {
-		return data
-	} else {
+	if err != nil {
 		return 0
 	}
 	return data
@@ -176,7 +174,7 @@ func PrintLogHeader(inputLine1 string, isInputHeader bool) {
 		}
 	}
 	stdoutMutex.Lock()
-	fmt.Printf("startTime%ccommand%cnextCommand%cstep%crequestType%csessionKey%csession%cgrep1%cgrep2%cid%cshortUrl%cstatusCode%csessionVarsOk%cclientId%cbyteSize%cserver%cduration%cserverDuration%cbuildId%s\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, inputLine1)
+	fmt.Printf("startTime%ccommand%cnextCommand%cstep%crequestType%csessionKey%csession%cgrep1%cgrep2%cid%cshortUrl%cstatusCode%csessionVarsOk%cclientId%cbyteSize%cserver%cduration%cserverDuration%cbuildId%s\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, inputLine1)
 	stdoutMutex.Unlock()
 	if len(cfg.CommandSequence.SessionLog) > 0 {
 		fmt.Fprintf(os.Stderr, "%s\n", strings.Replace(strings.Replace(strings.Replace(cfg.CommandSequence.SessionLog, "{%", "", -1), "{$", "", -1), "}", "", -1))
