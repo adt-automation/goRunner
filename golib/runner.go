@@ -699,7 +699,6 @@ func findSessionVars(command string, config *CfgStruct, input string, inputData 
 
 	if len(input) <= 2 {
 		// automatically false due to no chance to capture the session var
-		alwaysFoundSessionVars = false
 		return false, false
 	}
 
@@ -745,8 +744,8 @@ func findSessionVars(command string, config *CfgStruct, input string, inputData 
 			}
 		}
 	}
-	alwaysFoundSessionVars = alwaysFoundSessionVars && foundSessionVars
 	return foundSessionVars, foundMustCaptures
+
 }
 
 func doLogTcp(command string, config *CfgStruct, dump []byte, result *Result, startTime time.Time, shortUrl string, mdi string, clientId int, stepCounter int, lastSession string, sessionVars map[string]string) bool {
@@ -850,34 +849,10 @@ func doLog(command string, config *CfgStruct, requestType string, resp *http.Res
 			fmt.Fprintf(os.Stderr, "ERROR \"%s\" dumping http response to local (cient %d command %s input %s)\n", err.Error(), clientId, command, mdi)
 		}
 
-		// set any session vars listed for current command, e.g. SessionVar = XTOKEN detail="(.+)"
-		for _, session_var := range cfg.Command[command].SessionVar {
-			s := strings.SplitN(session_var, " ", 2) // s = ['XTOKEN', 'detail="(.+)"']
-			svar := s[0]
-			sgrep := rmac.RunnerMacrosRegexp(command, inputData, sessionVars, startTime, s[1])
-			regex := regexp.MustCompile(sgrep) // /detail="(.+)"/
-			if len(regex.String()) > 0 {
-				if len(dump) > 2 {
-					svals := regex.FindStringSubmatch(strings.Replace(string(dump), "\r", "", -1))
-					if len(svals) > 1 {
-						sessionVars[svar] = svals[1] // detail="abcdefg" --> svals[1] = "abcdefg"
-					} else if len(svals) == 1 && strings.Index(regex.String(), "(") == -1 && strings.Index(regex.String(), ")") == -1 {
-						sessionVars[svar] = svals[0]
-					} else {
-						fmt.Fprintf(os.Stderr, "ERROR: SessionVar %s from command \"%s\" was not set (client %d, input \"%s\")\n", svar, command, clientId, mdi)
-						foundSessionVars = false
-						if continueSession && responseMustCapture(config, svar, command) {
-							continueSession = false
-						}
-					}
-				} else if continueSession && responseMustCapture(config, svar, command) {
-					// automatically false due to no chance to capture the session var
-					continueSession = false
-					foundSessionVars = false
-				}
-			}
-		}
+		sessionVarsInput := strings.Replace(string(dump), "\r", "", -1)
+		_, foundMustCaptures := findSessionVars(command, config, sessionVarsInput, inputData, startTime, sessionVars, false)
 		alwaysFoundSessionVars = alwaysFoundSessionVars && foundSessionVars
+		continueSession = foundMustCaptures
 
 		if resp.StatusCode >= 200 && resp.StatusCode < 400 { //was300
 			atomic.AddInt32(&result.success, 1) //atomic++
@@ -953,7 +928,7 @@ func doLog(command string, config *CfgStruct, requestType string, resp *http.Res
 		if len(sessionVars) > 0 {
 			fmt.Fprintf(os.Stderr, "ERROR: SessionVars \"%s\" from command \"%s\" were not matched in bad/empty/undelivered response (client %d, input \"%s\")\n",
 				strings.Join(sessionVars, ","), command, clientId, mdi)
-			foundSessionVars = false
+			// foundSessionVars = false
 		}
 		var mustCapture = getFieldString(config, "MustCapture", command)
 		if len(mustCapture) > 0 {
