@@ -27,12 +27,12 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	runner "github.com/adt-automation/goRunner/golib"
 )
 
 var (
 	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+	Verbose    = flag.Bool("verbose", false, "verbose debugging output flag")
+	Keepalive  = flag.Bool("keepalive", true, "enable/disable keepalive")
 )
 
 var (
@@ -60,7 +60,7 @@ type MyConn struct {
 	net.Conn
 	readTimeout  time.Duration
 	writeTimeout time.Duration
-	result       *runner.Result
+	result       *Result
 }
 
 func init() {
@@ -118,7 +118,7 @@ func main() {
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
 	}
-	runner.Delimeter = delimeter //set the delimeter we want for the output log in the imported runner package
+	Delimeter = delimeter //set the delimeter we want for the output log in the imported runner package
 	if !headerExit && baseUrl == "" {
 		fmt.Fprintf(os.Stderr, "\nPlease provide the baseUrl...\n\n")
 		flag.Usage()
@@ -127,19 +127,19 @@ func main() {
 	trafficChannel := make(chan string)
 	//	startTraffic(trafficChannel) //start reading on the channel
 
-	if *runner.Verbose {
+	if *Verbose {
 		println("verbose")
 	}
 
 	overallStartTime := time.Now()
 	baseUrlFilter := regexp.MustCompile(baseUrl)
-	configuration := runner.NewConfiguration2(configFile)
-	results := make(map[int]*runner.Result)
+	configuration := NewConfiguration2(configFile)
+	results := make(map[int]*Result)
 	signalChannel := make(chan os.Signal, 2)
 	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		_ = <-signalChannel
-		runner.ExitWithStatus(results, overallStartTime)
+		ExitWithStatus(results, overallStartTime)
 	}()
 	goMaxProcs := os.Getenv("GOMAXPROCS")
 	if goMaxProcs == "" {
@@ -172,7 +172,7 @@ func main() {
 	}
 	for i := 0; i < clients; i++ {
 		done.Add(1)
-		result := &runner.Result{}
+		result := &Result{}
 		results[i] = result
 		clientDelay := rampUpDelay * time.Duration(i)
 		go client(tr, configuration, result, &done, trafficChannel, i, baseUrlFilter, stopTime, clientDelay)
@@ -200,14 +200,14 @@ func main() {
 
 	_ = scanner.Scan()
 	if !noHeader {
-		runner.PrintLogHeader(scanner.Text(), len(inputFile1) > 0)
+		PrintLogHeader(scanner.Text(), len(inputFile1) > 0)
 		if headerExit {
 			os.Exit(0)
 		}
 	}
-	if len(inputFile1) > 0 && runner.HasInputColHeaders() == false {
+	if len(inputFile1) > 0 && HasInputColHeaders() == false {
 		// name our column headers
-		runner.HeadInputColumns(scanner.Text())
+		HeadInputColumns(scanner.Text())
 	} else {
 		// anonymous column headers, put work into the channel instead
 		trafficChannel <- scanner.Text()
@@ -218,14 +218,14 @@ func main() {
 	}
 	close(trafficChannel)
 	done.Wait()
-	runner.ExitWithStatus(results, overallStartTime)
+	ExitWithStatus(results, overallStartTime)
 }
 
-func calcRampUpDelay(cfg *runner.CfgStruct) time.Duration {
+func calcRampUpDelay(cfg *CfgStruct) time.Duration {
 	if clients == 0 {
 		return time.Duration(0)
 	} else {
-		dur := runner.EstimateSessionTime(cfg)
+		dur := EstimateSessionTime(cfg)
 		return dur / time.Duration(clients)
 	}
 }
@@ -234,7 +234,7 @@ func calcRampUpDelay(cfg *runner.CfgStruct) time.Duration {
 //func noRedirect(req *http.Request, via []*http.Request) error {
 //	return errors.New("Don't redirect!")
 //}
-func client(tr *http.Transport, configuration *runner.CfgStruct, result *runner.Result, done *sync.WaitGroup, trafficChannel chan string, clientId int, baseUrlFilter *regexp.Regexp, stopTime time.Time, initialDelay time.Duration) {
+func client(tr *http.Transport, configuration *CfgStruct, result *Result, done *sync.WaitGroup, trafficChannel chan string, clientId int, baseUrlFilter *regexp.Regexp, stopTime time.Time, initialDelay time.Duration) {
 	defer done.Done()
 	// strangely, this sleep cannot be moved outside the client function
 	// or all client threads will wait until the last one is spawned before starting their own execution loops
@@ -249,23 +249,23 @@ func client(tr *http.Transport, configuration *runner.CfgStruct, result *runner.
 		// cookieMap and sessionVars should start fresh every time we start a DoReq session
 		var cookieMap = make(map[string]*http.Cookie)
 		var sessionVars = make(map[string]string)
-		runner.DoReq(0, id, configuration, result, clientId, baseUrl, baseUrlFilter, msDelay, tr, cookieMap, sessionVars, stopTime, 0.0) //val,resp, err
-		msDelay = runner.PostSessionDelay
+		DoReq(0, id, configuration, result, clientId, baseUrl, baseUrlFilter, msDelay, tr, cookieMap, sessionVars, stopTime, 0.0) //val,resp, err
+		msDelay = PostSessionDelay
 	}
 	if time.Now().Before(stopTime) {
 		fmt.Fprintf(os.Stderr, "client %d ran out of test input %.2fs before full test time\n", clientId, stopTime.Sub(time.Now()).Seconds())
 	}
 }
 
-func printSessionSummary(configuration *runner.CfgStruct, configFile string) {
+func printSessionSummary(configuration *CfgStruct, configFile string) {
 	fmt.Fprintf(os.Stderr, "GORUNNER\n")
 	if len(configuration.Version.ConfigVersion) > 5 {
 		fmt.Fprintf(os.Stderr, "Configuration:                  %s version %s\n", configFile, configuration.Version.ConfigVersion[5:len(configuration.Version.ConfigVersion)-1])
 	} else {
 		fmt.Fprintf(os.Stderr, "Configuration:                  %s\n", configFile)
 	}
-	fmt.Fprintf(os.Stderr, "Session profile:                %d requests: %s\n", len(runner.CommandQueue), strings.Join(runner.CommandQueue, ", "))
-	fmt.Fprintf(os.Stderr, "Estimated session time:         %v\n", runner.EstimateSessionTime(configuration))
+	fmt.Fprintf(os.Stderr, "Session profile:                %d requests: %s\n", len(CommandQueue), strings.Join(CommandQueue, ", "))
+	fmt.Fprintf(os.Stderr, "Estimated session time:         %v\n", EstimateSessionTime(configuration))
 	fmt.Fprintf(os.Stderr, "Simultaneous sessions:          %d\n", clients)
 	fmt.Fprintf(os.Stderr, "API host:                       %s\n", baseUrl)
 	const layout = "2006-01-02 15:04:05"

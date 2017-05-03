@@ -1,4 +1,4 @@
-package runner
+package main
 
 //author: Doug Watson
 
@@ -9,7 +9,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -27,15 +26,6 @@ import (
 	"time"
 
 	"gopkg.in/gcfg.v1"
-
-	rmac "github.com/adt-automation/goRunner/golib/macro"
-)
-
-// -------------------------------------------------------------------------------------------------
-// Flags
-var (
-	Verbose   = flag.Bool("verbose", false, "verbose debugging output flag")
-	Keepalive = flag.Bool("keepalive", true, "enable/disable keepalive")
 )
 
 // -------------------------------------------------------------------------------------------------
@@ -103,14 +93,6 @@ var CommandQueue []string
 var PostSessionDelay int
 var initialGetField map[string]bool
 var alwaysFoundSessionVars bool = true
-
-func HeadInputColumns(csvText string) {
-	rmac.HeadInputColumns(csvText)
-}
-
-func HasInputColHeaders() bool {
-	return rmac.HasInputColHeaders()
-}
 
 func getFieldString(config *CfgStruct, field string, command string) string {
 	data := ""
@@ -251,21 +233,21 @@ func EstimateSessionTime(cfg *CfgStruct) time.Duration {
 }
 
 func initRunnerMacros(cfg *CfgStruct) {
-	rmac.KvDelimeter = Delimeter
+	KvDelimeter = Delimeter
 	for _, cmd := range CommandQueue {
-		rmac.InitMacros(cmd, getFieldString(cfg, "ReqBody", cmd))
-		rmac.InitMacros(cmd, getFieldString(cfg, "ReqUrl", cmd))
-		rmac.InitMacros(cmd, getFieldString(cfg, "EncryptIv", cmd))
-		rmac.InitMacros(cmd, getFieldString(cfg, "EncryptKey", cmd))
+		InitMacros(cmd, getFieldString(cfg, "ReqBody", cmd))
+		InitMacros(cmd, getFieldString(cfg, "ReqUrl", cmd))
+		InitMacros(cmd, getFieldString(cfg, "EncryptIv", cmd))
+		InitMacros(cmd, getFieldString(cfg, "EncryptKey", cmd))
 		for _, session_var := range cfg.Command[cmd].SessionVar {
 			s := strings.SplitN(session_var, " ", 2) // s = ['CUSTNO', '<extId>{%VAL}</extId>']
-			rmac.InitMacros(cmd, s[1])
+			InitMacros(cmd, s[1])
 		}
-		rmac.InitMd5Macro(cmd, getFieldString(cfg, "Md5Input", cmd))
-		rmac.InitBase64Macro(cmd, getFieldString(cfg, "Base64Input", cmd))
+		InitMd5Macro(cmd, getFieldString(cfg, "Md5Input", cmd))
+		InitBase64Macro(cmd, getFieldString(cfg, "Base64Input", cmd))
 	}
-	rmac.InitSessionLogMacros(cfg.CommandSequence.SessionLog)
-	rmac.InitUnixtimeMacros()
+	InitSessionLogMacros(cfg.CommandSequence.SessionLog)
+	InitUnixtimeMacros()
 }
 
 func httpReq(inputData string, config *CfgStruct, command string, baseUrl string, tr *http.Transport, cookieMap map[string]*http.Cookie, sessionVars map[string]string, reqTime time.Time) (*http.Request, *http.Response, error) {
@@ -304,8 +286,8 @@ func httpReq(inputData string, config *CfgStruct, command string, baseUrl string
 	requestContentType := getFieldString(config, "ReqContentType", command)
 	requestType := getFieldString(config, "ReqType", command)
 
-	body = rmac.RunnerMacros(command, inputData, sessionVars, reqTime, body)
-	urlx = rmac.RunnerMacros(command, inputData, sessionVars, reqTime, urlx)
+	body = RunnerMacros(command, inputData, sessionVars, reqTime, body)
+	urlx = RunnerMacros(command, inputData, sessionVars, reqTime, urlx)
 
 	reqReader := io.Reader(bytes.NewReader([]byte(body)))
 	requestContentSize := int64(len(body))
@@ -503,7 +485,7 @@ func tcpReq(inputData string, config *CfgStruct, command string, servAddr string
 	}
 
 	input := getFieldString(config, "ReqBody", command)
-	input = rmac.RunnerMacros(command, inputData, sessionVars, reqTime, input)
+	input = RunnerMacros(command, inputData, sessionVars, reqTime, input)
 
 	send, err := hex.DecodeString(strings.Replace(input, " ", "", -1))
 	if err != nil {
@@ -521,7 +503,7 @@ func tcpReq(inputData string, config *CfgStruct, command string, servAddr string
 		ebytes := send[encryptStart : encryptStart+encryptCt]
 
 		ivStr := getFieldString(config, "EncryptIv", command)
-		ivStr = rmac.RunnerMacros(command, inputData, sessionVars, reqTime, ivStr)
+		ivStr = RunnerMacros(command, inputData, sessionVars, reqTime, ivStr)
 		iv, err := hex.DecodeString(strings.Replace(ivStr, " ", "", -1))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "command %s hex decode failed: %s\n", command, err.Error())
@@ -529,7 +511,7 @@ func tcpReq(inputData string, config *CfgStruct, command string, servAddr string
 		}
 		iv = buildIv(reqTime)
 		keyStr := getFieldString(config, "EncryptKey", command)
-		keyStr = rmac.RunnerMacros(command, inputData, sessionVars, reqTime, keyStr)
+		keyStr = RunnerMacros(command, inputData, sessionVars, reqTime, keyStr)
 
 		if len(keyStr) == 0 {
 			log.Println("encryption key has empty value")
@@ -630,7 +612,7 @@ func DoReq(stepCounter int, mdi string, config *CfgStruct, result *Result, clien
 	if continueSession && stepCounter < len(CommandQueue) && CommandQueue[stepCounter] != "none" {
 		session = DoReq(stepCounter, mdi, config, result, clientId, baseUrl, baseUrlFilter, delay, tr, cookieMap, sessionVars, stopTime, commandTime)
 	} else if len(cfg.CommandSequence.SessionLog) > 0 {
-		fmt.Fprintf(os.Stderr, "%s\n", rmac.SessionLogMacros(mdi, sessionVars, time.Now(), cfg.CommandSequence.SessionLog))
+		fmt.Fprintf(os.Stderr, "%s\n", SessionLogMacros(mdi, sessionVars, time.Now(), cfg.CommandSequence.SessionLog))
 	}
 	lastSession = session
 	return
@@ -697,7 +679,7 @@ func findSessionVars(command string, config *CfgStruct, input string, inputData 
 	for _, session_var := range cfg.Command[command].SessionVar {
 		s := strings.SplitN(session_var, " ", 2) // s = ['XTOKEN', 'detail="(.+)"']
 		svar := s[0]
-		sgrep := rmac.RunnerMacrosRegexp(command, inputData, sessionVars, startTime, s[1])
+		sgrep := RunnerMacrosRegexp(command, inputData, sessionVars, startTime, s[1])
 		regex := regexp.MustCompile(sgrep) // /detail="(.+)"/
 		if len(regex.String()) <= 0 {
 			continue

@@ -1,4 +1,4 @@
-package macro
+package main
 
 import (
 	"crypto/md5"
