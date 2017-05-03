@@ -133,12 +133,14 @@ func main() {
 	overallStartTime := time.Now()
 	baseUrlFilter := regexp.MustCompile(baseUrl)
 	configuration := NewConfig(configFile)
+	runner := NewRunner(configuration)
+
 	results := make(map[int]*Result)
 	signalChannel := make(chan os.Signal, 2)
 	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		_ = <-signalChannel
-		ExitWithStatus(results, overallStartTime)
+		runner.ExitWithStatus(results, overallStartTime)
 	}()
 	goMaxProcs := os.Getenv("GOMAXPROCS")
 	if goMaxProcs == "" {
@@ -147,9 +149,9 @@ func main() {
 
 	rampUpDelay := time.Duration(0)
 	if !headerExit {
-		printSessionSummary(configuration, configFile)
+		runner.printSessionSummary()
 		if rampUp == "auto" {
-			rampUpDelay = calcRampUpDelay(configuration)
+			rampUpDelay = runner.RampUpDelay()
 		} else {
 			var err error
 			rampUpDelay, err = time.ParseDuration(rampUp)
@@ -174,7 +176,7 @@ func main() {
 		result := &Result{}
 		results[i] = result
 		clientDelay := rampUpDelay * time.Duration(i)
-		go client(tr, configuration, result, &done, trafficChannel, i, baseUrlFilter, stopTime, clientDelay)
+		go client(tr, runner, result, &done, trafficChannel, i, baseUrlFilter, stopTime, clientDelay)
 	}
 
 	if len(inputFile1) > 0 {
@@ -199,7 +201,7 @@ func main() {
 
 	_ = scanner.Scan()
 	if !noHeader {
-		PrintLogHeader(scanner.Text(), len(inputFile1) > 0)
+		runner.PrintLogHeader(scanner.Text(), len(inputFile1) > 0)
 		if headerExit {
 			os.Exit(0)
 		}
@@ -217,23 +219,14 @@ func main() {
 	}
 	close(trafficChannel)
 	done.Wait()
-	ExitWithStatus(results, overallStartTime)
-}
-
-func calcRampUpDelay(cfg *Config) time.Duration {
-	if clients == 0 {
-		return time.Duration(0)
-	} else {
-		dur := EstimateSessionTime(cfg)
-		return dur / time.Duration(clients)
-	}
+	runner.ExitWithStatus(results, overallStartTime)
 }
 
 //one client per -c=thread
 //func noRedirect(req *http.Request, via []*http.Request) error {
 //	return errors.New("Don't redirect!")
 //}
-func client(tr *http.Transport, configuration *Config, result *Result, done *sync.WaitGroup, trafficChannel chan string, clientId int, baseUrlFilter *regexp.Regexp, stopTime time.Time, initialDelay time.Duration) {
+func client(tr *http.Transport, runner *Runner, result *Result, done *sync.WaitGroup, trafficChannel chan string, clientId int, baseUrlFilter *regexp.Regexp, stopTime time.Time, initialDelay time.Duration) {
 	defer done.Done()
 	// strangely, this sleep cannot be moved outside the client function
 	// or all client threads will wait until the last one is spawned before starting their own execution loops
@@ -248,23 +241,23 @@ func client(tr *http.Transport, configuration *Config, result *Result, done *syn
 		// cookieMap and sessionVars should start fresh every time we start a DoReq session
 		var cookieMap = make(map[string]*http.Cookie)
 		var sessionVars = make(map[string]string)
-		DoReq(0, id, configuration, result, clientId, baseUrl, baseUrlFilter, msDelay, tr, cookieMap, sessionVars, stopTime, 0.0) //val,resp, err
-		msDelay = PostSessionDelay
+		runner.DoReq(0, id, result, clientId, baseUrl, baseUrlFilter, msDelay, tr, cookieMap, sessionVars, stopTime, 0.0) //val,resp, err
+		msDelay = runner.PostSessionDelay
 	}
 	if time.Now().Before(stopTime) {
 		fmt.Fprintf(os.Stderr, "client %d ran out of test input %.2fs before full test time\n", clientId, stopTime.Sub(time.Now()).Seconds())
 	}
 }
 
-func printSessionSummary(configuration *Config, configFile string) {
+func (runner *Runner) printSessionSummary() {
 	fmt.Fprintf(os.Stderr, "GORUNNER\n")
-	if len(configuration.Version.ConfigVersion) > 5 {
-		fmt.Fprintf(os.Stderr, "Configuration:                  %s version %s\n", configFile, configuration.Version.ConfigVersion[5:len(configuration.Version.ConfigVersion)-1])
+	if len(runner.config.Version.ConfigVersion) > 5 {
+		fmt.Fprintf(os.Stderr, "Configuration:                  %s version %s\n", configFile, runner.config.Version.ConfigVersion[5:len(runner.config.Version.ConfigVersion)-1])
 	} else {
 		fmt.Fprintf(os.Stderr, "Configuration:                  %s\n", configFile)
 	}
-	fmt.Fprintf(os.Stderr, "Session profile:                %d requests: %s\n", len(CommandQueue), strings.Join(CommandQueue, ", "))
-	fmt.Fprintf(os.Stderr, "Estimated session time:         %v\n", EstimateSessionTime(configuration))
+	fmt.Fprintf(os.Stderr, "Session profile:                %d requests: %s\n", len(runner.CommandQueue), strings.Join(runner.CommandQueue, ", "))
+	fmt.Fprintf(os.Stderr, "Estimated session time:         %v\n", runner.EstimateSessionTime())
 	fmt.Fprintf(os.Stderr, "Simultaneous sessions:          %d\n", clients)
 	fmt.Fprintf(os.Stderr, "API host:                       %s\n", baseUrl)
 	const layout = "2006-01-02 15:04:05"

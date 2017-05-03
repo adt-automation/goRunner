@@ -31,17 +31,65 @@ type Result struct {
 	writeThroughput int32
 }
 
-var stdoutMutex sync.Mutex
+type Runner struct {
+	config                 *Config
+	stdoutMutex            sync.Mutex
+	CommandQueue           []string
+	SessionCookieName      string
+	alwaysFoundSessionVars bool
+	PostSessionDelay       int
+	GrepCommand            *regexp.Regexp
+}
 
-var config = Config{}
-var GrepCommand *regexp.Regexp
-var SessionCookieName string
-var CommandQueue []string
-var PostSessionDelay int
-var initialGetField map[string]bool
-var alwaysFoundSessionVars bool = true
+func NewRunner(config *Config) *Runner {
+	toReturn := &Runner{config: config, alwaysFoundSessionVars: true}
+	toReturn.GrepCommand = regexp.MustCompile(config.Search.CommandGrep)
+	toReturn.SessionCookieName = config.Search.SessionCookieName
 
-func PrintLogHeader(inputLine1 string, isInputHeader bool) {
+	// ---------------------------------------------------------------------------------------------
+	// Init command queue
+	if len(config.CommandSequence.Sequence) > 0 {
+		for _, cmd := range strings.Split(config.CommandSequence.Sequence, ",") {
+			toReturn.CommandQueue = append(toReturn.CommandQueue, strings.TrimSpace(cmd))
+		}
+	} else {
+		toReturn.CommandQueue = append(toReturn.CommandQueue, "_start")
+		cmd := config.Command["_start"].DoCall
+		for len(cmd) > 0 {
+			if cmd == "none" {
+				break
+			} else {
+				toReturn.CommandQueue = append(toReturn.CommandQueue, cmd)
+				cmd = config.Command[cmd].DoCall
+			}
+		}
+	}
+	li := len(toReturn.CommandQueue) - 1
+	if li >= 0 {
+		toReturn.PostSessionDelay = config.FieldInteger("MsecDelay", toReturn.CommandQueue[li])
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Init runner macros
+	for _, cmd := range toReturn.CommandQueue {
+		InitMacros(cmd, config.FieldString("ReqBody", cmd))
+		InitMacros(cmd, config.FieldString("ReqUrl", cmd))
+		InitMacros(cmd, config.FieldString("EncryptIv", cmd))
+		InitMacros(cmd, config.FieldString("EncryptKey", cmd))
+		for _, session_var := range config.Command[cmd].SessionVar {
+			s := strings.SplitN(session_var, " ", 2) // s = ['CUSTNO', '<extId>{%VAL}</extId>']
+			InitMacros(cmd, s[1])
+		}
+		InitMd5Macro(cmd, config.FieldString("Md5Input", cmd))
+		InitBase64Macro(cmd, config.FieldString("Base64Input", cmd))
+	}
+	InitSessionLogMacros(config.CommandSequence.SessionLog)
+	InitUnixtimeMacros()
+
+	return toReturn
+}
+
+func (runner *Runner) PrintLogHeader(inputLine1 string, isInputHeader bool) {
 	d := delimeter[0]
 	if strings.Index(inputLine1, ",") == -1 {
 		inputLine1 = ""
@@ -60,69 +108,38 @@ func PrintLogHeader(inputLine1 string, isInputHeader bool) {
 			inputLine1 = strings.Replace(inputLine1, ",", delimeter[0:1], -1)
 		}
 	}
-	stdoutMutex.Lock()
+	runner.stdoutMutex.Lock()
 	fmt.Printf("startTime%ccommand%cstep%crequestType%csessionKey%csession%cid%cshortUrl%cstatusCode%csessionVarsOk%cclientId%cbyteSize%cserver%cduration%cserverDuration%cbuildId%s\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, inputLine1)
-	stdoutMutex.Unlock()
-	if len(config.CommandSequence.SessionLog) > 0 {
-		fmt.Fprintf(os.Stderr, "%s\n", strings.Replace(strings.Replace(strings.Replace(config.CommandSequence.SessionLog, "{%", "", -1), "{$", "", -1), "}", "", -1))
+	runner.stdoutMutex.Unlock()
+	if len(runner.config.CommandSequence.SessionLog) > 0 {
+		fmt.Fprintf(os.Stderr, "%s\n", strings.Replace(strings.Replace(strings.Replace(runner.config.CommandSequence.SessionLog, "{%", "", -1), "{$", "", -1), "}", "", -1))
 	}
 }
 
-func initCommandQueue(config *Config) {
-	if len(config.CommandSequence.Sequence) > 0 {
-		for _, cmd := range strings.Split(config.CommandSequence.Sequence, ",") {
-			CommandQueue = append(CommandQueue, strings.TrimSpace(cmd))
-		}
-	} else {
-		CommandQueue = append(CommandQueue, "_start")
-		cmd := config.Command["_start"].DoCall
-		for len(cmd) > 0 {
-			if cmd == "none" {
-				break
-			} else {
-				CommandQueue = append(CommandQueue, cmd)
-				cmd = config.Command[cmd].DoCall
-			}
-		}
-	}
-	li := len(CommandQueue) - 1
-	if li >= 0 {
-		PostSessionDelay = config.FieldInteger("MsecDelay", CommandQueue[li])
-	}
-}
-
-func EstimateSessionTime(config *Config) time.Duration {
-	ncq := len(CommandQueue)
+func (runner *Runner) EstimateSessionTime() time.Duration {
+	ncq := len(runner.CommandQueue)
 	dur := time.Duration(ncq*100) * time.Millisecond // estimate 100ms / call
 	for i := 0; i < ncq; i++ {
-		repeat := config.FieldInteger("MsecRepeat", CommandQueue[i])
+		repeat := runner.config.FieldInteger("MsecRepeat", runner.CommandQueue[i])
 		if repeat > 0 {
 			dur += time.Millisecond * time.Duration(repeat)
 		} else if i < ncq-1 { // no post-call delay for final command in sesssion sequence
-			dur += time.Millisecond * time.Duration(config.FieldInteger("MsecDelay", CommandQueue[i]))
+			dur += time.Millisecond * time.Duration(runner.config.FieldInteger("MsecDelay", runner.CommandQueue[i]))
 		}
 	}
 	return dur
 }
 
-func initRunnerMacros(config *Config) {
-	for _, cmd := range CommandQueue {
-		InitMacros(cmd, config.FieldString("ReqBody", cmd))
-		InitMacros(cmd, config.FieldString("ReqUrl", cmd))
-		InitMacros(cmd, config.FieldString("EncryptIv", cmd))
-		InitMacros(cmd, config.FieldString("EncryptKey", cmd))
-		for _, session_var := range config.Command[cmd].SessionVar {
-			s := strings.SplitN(session_var, " ", 2) // s = ['CUSTNO', '<extId>{%VAL}</extId>']
-			InitMacros(cmd, s[1])
-		}
-		InitMd5Macro(cmd, config.FieldString("Md5Input", cmd))
-		InitBase64Macro(cmd, config.FieldString("Base64Input", cmd))
+func (runner *Runner) RampUpDelay() time.Duration {
+	if clients == 0 {
+		return time.Duration(0)
+	} else {
+		dur := runner.EstimateSessionTime()
+		return dur / time.Duration(clients)
 	}
-	InitSessionLogMacros(config.CommandSequence.SessionLog)
-	InitUnixtimeMacros()
 }
 
-func httpReq(inputData string, config *Config, command string, baseUrl string, tr *http.Transport, cookieMap map[string]*http.Cookie, sessionVars map[string]string, reqTime time.Time) (*http.Request, *http.Response, error) {
+func (runner *Runner) httpReq(inputData string, config *Config, command string, baseUrl string, tr *http.Transport, cookieMap map[string]*http.Cookie, sessionVars map[string]string, reqTime time.Time) (*http.Request, *http.Response, error) {
 
 	var reqErr error
 
@@ -306,7 +323,7 @@ func httpRoundTrip(tr *http.Transport, req *http.Request) (*http.Response, error
 }
 
 // e.g. servAddr := "gsess-dr.adtpulse.com:11083"
-func tcpReq(inputData string, config *Config, command string, servAddr string, sessionVars map[string]string) []byte {
+func (runner *Runner) tcpReq(inputData string, config *Config, command string, servAddr string, sessionVars map[string]string) []byte {
 
 	var reqTime time.Time = time.Now()
 
@@ -396,7 +413,7 @@ func tcpReq(inputData string, config *Config, command string, servAddr string, s
 	return reply[0:responseLen]
 }
 
-func DoReq(stepCounter int, mdi string, config *Config, result *Result, clientId int, baseUrl string, baseUrlFilter *regexp.Regexp, delay int, tr *http.Transport, cookieMap map[string]*http.Cookie, sessionVars map[string]string, stopTime time.Time, commandTime float64) string {
+func (runner *Runner) DoReq(stepCounter int, mdi string, result *Result, clientId int, baseUrl string, baseUrlFilter *regexp.Regexp, delay int, tr *http.Transport, cookieMap map[string]*http.Cookie, sessionVars map[string]string, stopTime time.Time, commandTime float64) string {
 
 	if !stopTime.IsZero() && time.Now().Add(time.Duration(delay)*time.Millisecond).After(stopTime) {
 		return ""
@@ -411,24 +428,24 @@ func DoReq(stepCounter int, mdi string, config *Config, result *Result, clientId
 		shortUrl    string
 	)
 
-	command := CommandQueue[stepCounter]
+	command := runner.CommandQueue[stepCounter]
 	stepCounter += 1
 	session := ""
 	continueSession := true
 
-	_, ok := config.Command[command]
+	_, ok := runner.config.Command[command]
 	if !ok {
 		fmt.Fprintf(os.Stderr, "ERROR: command %q is not defined in the .ini file\n", command)
 	} else {
 		// -----------------------------------------------------------------------------------------
 		// Perform TCP or HTTP request
 		startTime := time.Now()
-		requestType := config.FieldString("ReqType", command)
+		requestType := runner.config.FieldString("ReqType", command)
 		if requestType == "TCP" {
-			tcpReply = tcpReq(mdi, config, command, baseUrl, sessionVars)
+			tcpReply = runner.tcpReq(mdi, runner.config, command, baseUrl, sessionVars)
 			shortUrl = (baseUrlFilter).ReplaceAllString(baseUrl, "")
 		} else {
-			httpRequest, httpResp, httpError = httpReq(mdi, config, command, baseUrl, tr, cookieMap, sessionVars, startTime)
+			httpRequest, httpResp, httpError = runner.httpReq(mdi, runner.config, command, baseUrl, tr, cookieMap, sessionVars, startTime)
 			shortUrl = (baseUrlFilter).ReplaceAllString(httpRequest.URL.String(), "")
 			requestType = httpRequest.Method
 
@@ -436,11 +453,11 @@ func DoReq(stepCounter int, mdi string, config *Config, result *Result, clientId
 
 		// -----------------------------------------------------------------------------------------
 		// Process request response & log
-		session, continueSession = doLog(command, config, requestType, tcpReply, httpResp, result, httpError, startTime, shortUrl, mdi, clientId, stepCounter, "", sessionVars)
+		session, continueSession = runner.doLog(command, runner.config, requestType, tcpReply, httpResp, result, httpError, startTime, shortUrl, mdi, clientId, stepCounter, "", sessionVars)
 
-		delay = config.FieldInteger("MsecDelay", command)
+		delay = runner.config.FieldInteger("MsecDelay", command)
 
-		repeatTime := float64(config.FieldInteger("MsecRepeat", command))
+		repeatTime := float64(runner.config.FieldInteger("MsecRepeat", command))
 		requestTime := float64(delay) + (time.Since(startTime)).Seconds()*1000.0
 		// add delay again here, to find out whether the delay will put us past the repeat time
 		if commandTime+requestTime+float64(delay) < repeatTime {
@@ -451,14 +468,14 @@ func DoReq(stepCounter int, mdi string, config *Config, result *Result, clientId
 		}
 	}
 
-	if verbose && stepCounter < len(CommandQueue) {
-		fmt.Fprintf(os.Stderr, "mdi %s stepCounter %d nextCommand=%v\n", mdi, stepCounter, CommandQueue[stepCounter])
+	if verbose && stepCounter < len(runner.CommandQueue) {
+		fmt.Fprintf(os.Stderr, "mdi %s stepCounter %d nextCommand=%v\n", mdi, stepCounter, runner.CommandQueue[stepCounter])
 	}
 
-	if continueSession && stepCounter < len(CommandQueue) && CommandQueue[stepCounter] != "none" {
-		session = DoReq(stepCounter, mdi, config, result, clientId, baseUrl, baseUrlFilter, delay, tr, cookieMap, sessionVars, stopTime, commandTime)
-	} else if len(config.CommandSequence.SessionLog) > 0 {
-		fmt.Fprintf(os.Stderr, "%s\n", SessionLogMacros(mdi, sessionVars, time.Now(), config.CommandSequence.SessionLog))
+	if continueSession && stepCounter < len(runner.CommandQueue) && runner.CommandQueue[stepCounter] != "none" {
+		session = runner.DoReq(stepCounter, mdi, result, clientId, baseUrl, baseUrlFilter, delay, tr, cookieMap, sessionVars, stopTime, commandTime)
+	} else if len(runner.config.CommandSequence.SessionLog) > 0 {
+		fmt.Fprintf(os.Stderr, "%s\n", SessionLogMacros(mdi, sessionVars, time.Now(), runner.config.CommandSequence.SessionLog))
 	}
 
 	return session
@@ -477,10 +494,10 @@ func GetResults(results map[int]*Result, overallStartTime time.Time) map[string]
 	}
 	return summary
 }
-func ExitWithStatus(results map[int]*Result, overallStartTime time.Time) {
+func (runner *Runner) ExitWithStatus(results map[int]*Result, overallStartTime time.Time) {
 	myMap := GetResults(results, overallStartTime)
 	PrintResults(myMap, overallStartTime)
-	os.Exit(exitStatus(myMap))
+	os.Exit(runner.exitStatus(myMap))
 }
 
 func PrintResults(myMap map[string]int32, overallStartTime time.Time) {
@@ -501,17 +518,17 @@ func PrintResults(myMap map[string]int32, overallStartTime time.Time) {
 	fmt.Fprintf(os.Stderr, "Test end time:                  %v\n", time.Now().Format(layout))
 }
 
-func exitStatus(myMap map[string]int32) int {
+func (runner *Runner) exitStatus(myMap map[string]int32) int {
 	if myMap["success"] != myMap["requests"] {
 		return 32
-	} else if !alwaysFoundSessionVars {
+	} else if !runner.alwaysFoundSessionVars {
 		return 33
 	} else {
 		return 0
 	}
 }
 
-func findSessionVars(command string, config *Config, input string, inputData string, startTime time.Time, sessionVars map[string]string, hex bool) (bool, bool) {
+func (runner *Runner) findSessionVars(command string, config *Config, input string, inputData string, startTime time.Time, sessionVars map[string]string, hex bool) (bool, bool) {
 
 	if len(input) <= 2 {
 		// automatically false due to no chance to capture the session var
@@ -565,7 +582,7 @@ func findSessionVars(command string, config *Config, input string, inputData str
 
 }
 
-func doLog(command string, config *Config, requestMethod string, tcpResponse []byte, httpResponse *http.Response, result *Result, err error, startTime time.Time, shortUrl string, mdi string, clientId int, stepCounter int, lastSession string, sessionVars map[string]string) (string, bool) {
+func (runner *Runner) doLog(command string, config *Config, requestMethod string, tcpResponse []byte, httpResponse *http.Response, result *Result, err error, startTime time.Time, shortUrl string, mdi string, clientId int, stepCounter int, lastSession string, sessionVars map[string]string) (string, bool) {
 
 	var (
 		sessionKey        string
@@ -615,8 +632,8 @@ func doLog(command string, config *Config, requestMethod string, tcpResponse []b
 		//atomic.AddInt32(&result.networkFailed, 1)
 		//atomic.AddInt32(&result.badFailed, 1)
 
-		foundSessionVars, foundMustCaptures := findSessionVars(command, config, fmt.Sprintf("%x", tcpResponse), inputData, startTime, sessionVars, tcp)
-		alwaysFoundSessionVars = alwaysFoundSessionVars && foundSessionVars
+		foundSessionVars, foundMustCaptures := runner.findSessionVars(command, config, fmt.Sprintf("%x", tcpResponse), inputData, startTime, sessionVars, tcp)
+		runner.alwaysFoundSessionVars = runner.alwaysFoundSessionVars && foundSessionVars
 		continueSession = continueSession && foundMustCaptures
 		goto OUTPUTLOG
 	}
@@ -637,7 +654,7 @@ func doLog(command string, config *Config, requestMethod string, tcpResponse []b
 				if verbose {
 					fmt.Fprintf(os.Stderr, "cookie nameX=%v\n\n", cookie)
 				}
-				if cookie.Name == SessionCookieName {
+				if cookie.Name == runner.SessionCookieName {
 					session = cookie.Value
 					if verbose {
 						fmt.Fprintf(os.Stderr, "session=%v\n", cookie)
@@ -656,8 +673,8 @@ func doLog(command string, config *Config, requestMethod string, tcpResponse []b
 		}
 
 		sessionVarsInput := strings.Replace(string(dump), "\r", "", -1)
-		foundSessionVars, foundMustCaptures = findSessionVars(command, config, sessionVarsInput, inputData, startTime, sessionVars, false)
-		alwaysFoundSessionVars = alwaysFoundSessionVars && foundSessionVars
+		foundSessionVars, foundMustCaptures = runner.findSessionVars(command, config, sessionVarsInput, inputData, startTime, sessionVars, false)
+		runner.alwaysFoundSessionVars = runner.alwaysFoundSessionVars && foundSessionVars
 		continueSession = continueSession && foundMustCaptures
 
 		if httpResponse.StatusCode >= 200 && httpResponse.StatusCode < 400 { //was300
@@ -712,9 +729,9 @@ OUTPUTLOG:
 
 	d := delimeter[0]
 
-	stdoutMutex.Lock()
+	runner.stdoutMutex.Lock()
 	fmt.Printf("%v%c%s%c%d%c%s%c%s%c%s%c%s%c%s%c%d%c%v%c%d%c%d%c%v%c%.3f%c%.3f%c%s%s\n", startTime.Format(layout), d, command, d, stepCounter, d, requestMethod, d, sessionKey, d, session, d, mdi, d, shortUrl, d, statusCode, d, foundSessionVars, d, clientId, d, byteSize, d, server, d, duration, d, serverTime, d, Build, inputVals)
-	stdoutMutex.Unlock()
+	runner.stdoutMutex.Unlock()
 
 	return session, continueSession
 }
