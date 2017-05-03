@@ -291,9 +291,6 @@ func httpReq(inputData string, config *CfgStruct, command string, baseUrl string
 	} else {
 		urlx = r.Replace(baseUrl + urlx)
 	}
-	header1String := r.Replace(getFieldString(config, "ReqHeader1", command))
-	header2String := r.Replace(getFieldString(config, "ReqHeader2", command))
-	header3String := r.Replace(getFieldString(config, "ReqHeader3", command))
 
 	requestContentType := getFieldString(config, "ReqContentType", command)
 	requestType := getFieldString(config, "ReqType", command)
@@ -345,21 +342,7 @@ func httpReq(inputData string, config *CfgStruct, command string, baseUrl string
 	if len(requestContentType) > 0 {
 		req.Header.Set("Content-Type", requestContentType)
 	}
-	if len(header1String) > 0 {
-		header1String = rmac.RunnerMacros(command, inputData, sessionVars, reqTime, header1String)
-		str := strings.Split(header1String, ":") /* authorization: Basic asdfasdf */
-		req.Header.Set(str[0], strings.TrimSpace(str[1]))
-	}
-	if len(header2String) > 0 {
-		header2String = rmac.RunnerMacros(command, inputData, sessionVars, reqTime, header2String)
-		str := strings.Split(header2String, ":") /* fubar-request-extra: asdfasdf */
-		req.Header.Set(str[0], strings.TrimSpace(str[1]))
-	}
-	if len(header3String) > 0 {
-		header3String = rmac.RunnerMacros(command, inputData, sessionVars, reqTime, header3String)
-		str := strings.Split(header3String, ":") /* fubar-request-extra: asdfasdf */
-		req.Header.Set(str[0], strings.TrimSpace(str[1]))
-	}
+
 	for hdr, vals := range req.Header {
 		req.Header.Set(hdr, strings.Replace(vals[0], "{%KEY}", string(inputData), -1))
 	}
