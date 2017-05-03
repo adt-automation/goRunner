@@ -22,7 +22,6 @@ import (
 	"regexp"
 	"runtime"
 	"runtime/pprof"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -247,19 +246,4 @@ func client(tr *http.Transport, runner *Runner, result *Result, done *sync.WaitG
 	if time.Now().Before(stopTime) {
 		fmt.Fprintf(os.Stderr, "client %d ran out of test input %.2fs before full test time\n", clientId, stopTime.Sub(time.Now()).Seconds())
 	}
-}
-
-func (runner *Runner) printSessionSummary() {
-	fmt.Fprintf(os.Stderr, "GORUNNER\n")
-	if len(runner.config.Version.ConfigVersion) > 5 {
-		fmt.Fprintf(os.Stderr, "Configuration:                  %s version %s\n", configFile, runner.config.Version.ConfigVersion[5:len(runner.config.Version.ConfigVersion)-1])
-	} else {
-		fmt.Fprintf(os.Stderr, "Configuration:                  %s\n", configFile)
-	}
-	fmt.Fprintf(os.Stderr, "Session profile:                %d requests: %s\n", len(runner.CommandQueue), strings.Join(runner.CommandQueue, ", "))
-	fmt.Fprintf(os.Stderr, "Estimated session time:         %v\n", runner.EstimateSessionTime())
-	fmt.Fprintf(os.Stderr, "Simultaneous sessions:          %d\n", clients)
-	fmt.Fprintf(os.Stderr, "API host:                       %s\n", baseUrl)
-	const layout = "2006-01-02 15:04:05"
-	fmt.Fprintf(os.Stderr, "Test start time:                %v\n", time.Now().Format(layout))
 }
