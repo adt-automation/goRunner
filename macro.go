@@ -27,25 +27,15 @@ var Md5Macros = make(map[string][]string)
 var Base64Macros = make(map[string][]string)
 var KvDelimeter = ","
 
-var inputColHeaders = make(map[string]int)
 var csvrx = regexp.MustCompile("{%CSV\\[(\\d+)\\]}")
 
-func HasInputColHeaders() bool {
-	return len(inputColHeaders) > 0
-}
-
-func HeadInputColumns(kvText string) {
-	for i, val := range strings.Split(kvText, KvDelimeter) {
-		inputColHeaders["{%"+val+"}"] = i // initialize these as macros
-	}
-}
-
 func inputColumnIndex(macroDeclaration string) int {
-	i, ok := inputColHeaders[macroDeclaration]
-	if !ok {
-		i = -1
-	}
-	return i
+	return -1
+	// i, ok := inputColHeaders[macroDeclaration]
+	// if !ok {
+	// 	i = -1
+	// }
+	// return i
 }
 
 func arrayContains(arr []string, str string) bool {

@@ -160,14 +160,6 @@ func main() {
 		trafficChannel <- scanner.Text()
 	}
 
-	// if len(inputFile1) > 0 && HasInputColHeaders() == false {
-	// 	// name our column headers
-	// 	HeadInputColumns(scanner.Text())
-	// } else {
-	// 	// anonymous column headers, put work into the channel instead
-	// 	trafficChannel <- scanner.Text()
-	// }
-
 	for scanner.Scan() {
 		trafficChannel <- scanner.Text() //put work into the channel from Stdin
 	}
