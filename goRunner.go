@@ -16,7 +16,6 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -29,12 +28,8 @@ import (
 	"time"
 )
 
-var (
-	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
-	Verbose    = flag.Bool("verbose", false, "verbose debugging output flag")
-	Keepalive  = flag.Bool("keepalive", true, "enable/disable keepalive")
-)
-
+// -------------------------------------------------------------------------------------------------
+// Flags
 var (
 	clients        int
 	secsTimedTest  int
@@ -52,16 +47,10 @@ var (
 	headerExit     bool
 	noHeader       bool
 	rampUp         string
-
-//	wg             sync.WaitGroup
+	cpuProfile     string
+	verbose        bool
+	keepAlive      bool
 )
-
-type MyConn struct {
-	net.Conn
-	readTimeout  time.Duration
-	writeTimeout time.Duration
-	result       *Result
-}
 
 func init() {
 	flag.IntVar(&clients, "c", 100, "Number of concurrent clients to launch.")
@@ -79,7 +68,19 @@ func init() {
 	flag.BoolVar(&headerExit, "hx", false, "Print output header row and exit")
 	flag.BoolVar(&noHeader, "nh", false, "Suppress output header row. Ignored if hx is set")
 	flag.IntVar(&readTimeout, "readtimeout", 30, "Timeout in seconds for the target API to send the first response byte. Default 30 seconds")
+	flag.StringVar(&cpuProfile, "cpuprofile", "", "write cpu profile to file")
+	flag.BoolVar(&verbose, "verbose", false, "verbose debugging output flag")
+	flag.BoolVar(&keepAlive, "keepalive", true, "enable/disable keepalive")
+}
 
+// -------------------------------------------------------------------------------------------------
+// Build commit id from git
+var Build string
+
+func init() {
+	if Build == "" {
+		Build = "unset"
+	}
 }
 
 /*
@@ -109,8 +110,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	if *cpuprofile != "" {
-		f, err := os.Create(*cpuprofile)
+	if cpuProfile != "" {
+		f, err := os.Create(cpuProfile)
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -127,7 +128,7 @@ func main() {
 	trafficChannel := make(chan string)
 	//	startTraffic(trafficChannel) //start reading on the channel
 
-	if *Verbose {
+	if verbose {
 		println("verbose")
 	}
 

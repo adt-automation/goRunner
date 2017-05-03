@@ -73,16 +73,6 @@ type CfgStruct struct {
 	}
 }
 
-// -------------------------------------------------------------------------------------------------
-// Build commit id from git
-var Build string
-
-func init() {
-	if Build == "" {
-		Build = "unset"
-	}
-}
-
 var stdoutMutex sync.Mutex
 
 var cfg = CfgStruct{}
@@ -310,7 +300,7 @@ func httpReq(inputData string, config *CfgStruct, command string, baseUrl string
 	req, reqErr := http.NewRequest(requestType, urlx, reqReader)
 
 	if reqErr != nil {
-		if *Verbose {
+		if verbose {
 			fmt.Fprintf(os.Stderr, "\nERROR=%v URL==%v requestType=%v body=%v\n", reqErr, urlx, requestType, body)
 		}
 		fmt.Fprintf(os.Stderr, "ERROR: command %s input %s TODO- Need a log entry here because we returned without logging due to an error generating the request!\n", command, inputData)
@@ -377,7 +367,7 @@ func httpReq(inputData string, config *CfgStruct, command string, baseUrl string
 			}
 		}
 	*/
-	if *Verbose {
+	if verbose {
 		dumpBody := requestContentSize <= 512
 		dump, err := httputil.DumpRequestOut(req, dumpBody)
 		if err == nil {
@@ -393,7 +383,7 @@ func httpReq(inputData string, config *CfgStruct, command string, baseUrl string
 	resp, err := httpRoundTrip(tr, req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s %s ERROR %s: %v\n", command, inputData, time.Now(), err.Error())
-	} else if *Verbose {
+	} else if verbose {
 		dump2, err2 := httputil.DumpResponse(resp, true)
 		if err2 != nil {
 			fmt.Fprintf(os.Stderr, "%s RESPONSE DUMP ERROR========\n\n%v\n", command, err2)
@@ -423,7 +413,7 @@ func httpReq(inputData string, config *CfgStruct, command string, baseUrl string
 }
 
 func httpRoundTrip(tr *http.Transport, req *http.Request) (*http.Response, error) {
-	if *Keepalive {
+	if keepAlive {
 		// tr.RoundTrip avoids automatic redirects
 		return tr.RoundTrip(req)
 	} else {
@@ -523,12 +513,12 @@ func tcpReq(inputData string, config *CfgStruct, command string, servAddr string
 			fmt.Fprintf(os.Stderr, "command %s encrypt error: %v\n", command, err.Error())
 			os.Exit(1)
 		}
-		if *Verbose {
+		if verbose {
 			fmt.Fprintf(os.Stderr, "%s PRE-ENCRYPT: % x\n", command, send)
 		}
 		send = bytes.Replace(send, ebytes, encrypted, 1)
 	}
-	if *Verbose {
+	if verbose {
 		fmt.Fprintf(os.Stderr, "%s TCP SEND: % x\n", command, send)
 	}
 
@@ -553,7 +543,7 @@ func tcpReq(inputData string, config *CfgStruct, command string, servAddr string
 	// first 2 bytes are 000a, indicating 10 byte response
 	// example reply := []byte{0x00, 0x0a, 0x01, 0x57, 0x1e, 0xb0, 0x3c, 0xf7, 0x01, 0x00}
 	responseLen := int(reply[0])*256 + int(reply[1])
-	if *Verbose {
+	if verbose {
 		fmt.Fprintf(os.Stderr, "%s TCP REPLY: % x\n", command, reply[0:responseLen])
 	}
 	return reply[0:responseLen]
@@ -605,7 +595,7 @@ func DoReq(stepCounter int, mdi string, config *CfgStruct, result *Result, clien
 		}
 	}
 
-	if *Verbose && stepCounter < len(CommandQueue) {
+	if verbose && stepCounter < len(CommandQueue) {
 		fmt.Fprintf(os.Stderr, "mdi %s stepCounter %d nextCommand=%v\n", mdi, stepCounter, CommandQueue[stepCounter])
 	}
 
@@ -789,12 +779,12 @@ func doLog(command string, config *CfgStruct, requestMethod string, tcpResponse 
 			//The registration process can be defined to use the account_key, while regular device interaction might use mdi (or device) key
 			if httpResponse.Header.Get("Set-Cookie") != "" {
 				for _, cookie := range httpResponse.Cookies() {
-					if *Verbose {
+					if verbose {
 						fmt.Fprintf(os.Stderr, "cookie nameX=%v\n\n", cookie)
 					}
 					if cookie.Name == SessionCookieName {
 						session = cookie.Value
-						if *Verbose {
+						if verbose {
 							fmt.Fprintf(os.Stderr, "session=%v\n", cookie)
 						}
 					}
