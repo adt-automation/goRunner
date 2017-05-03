@@ -4,11 +4,7 @@ package main
 
 import (
 	"bytes"
-	"crypto/aes"
-	"crypto/cipher"
-	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -423,41 +419,6 @@ func httpRoundTrip(tr *http.Transport, req *http.Request) (*http.Response, error
 	}
 }
 
-func tsByteBuffer(timestamp int64) *bytes.Buffer {
-	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.BigEndian, timestamp)
-	return buf
-}
-
-func buildIv(reqTime time.Time) []byte {
-	timestamp := reqTime.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
-	buf := tsByteBuffer(timestamp)
-	iv := make([]byte, 0, 16)
-	iv = append(iv, buf.Bytes()[2:]...)
-	iv = append(iv, buf.Bytes()[2:]...)
-	iv = append(iv, buf.Bytes()[2:6]...)
-	return iv
-}
-
-func buildKey(keyStr string) []byte {
-	key := make([]byte, 0, 32)
-
-	if strings.Count(keyStr, ",") != 31 {
-		log.Fatal(fmt.Sprintf("32-byte key required, current key will be %d bytes", 1+strings.Count(keyStr, ",")))
-	}
-
-	for _, ds := range strings.Split(keyStr, ",") {
-		ds = strings.TrimSpace(ds)
-		di, err := strconv.Atoi(ds)
-		if err != nil {
-			log.Fatal(err.Error() + " during encryption key construction")
-		} else {
-			key = append(key, byte(di))
-		}
-	}
-	return key
-}
-
 // e.g. servAddr := "gsess-dr.adtpulse.com:11083"
 func tcpReq(inputData string, config *CfgStruct, command string, servAddr string, sessionVars map[string]string) []byte {
 
@@ -549,11 +510,10 @@ func tcpReq(inputData string, config *CfgStruct, command string, servAddr string
 	return reply[0:responseLen]
 }
 
-func DoReq(stepCounter int, mdi string, config *CfgStruct, result *Result, clientId int, baseUrl string, baseUrlFilter *regexp.Regexp, delay int, tr *http.Transport, cookieMap map[string]*http.Cookie, sessionVars map[string]string, stopTime time.Time, commandTime float64) (lastSession string) {
+func DoReq(stepCounter int, mdi string, config *CfgStruct, result *Result, clientId int, baseUrl string, baseUrlFilter *regexp.Regexp, delay int, tr *http.Transport, cookieMap map[string]*http.Cookie, sessionVars map[string]string, stopTime time.Time, commandTime float64) string {
 
 	if !stopTime.IsZero() && time.Now().Add(time.Duration(delay)*time.Millisecond).After(stopTime) {
-		lastSession = ""
-		return
+		return ""
 	}
 	time.Sleep(time.Duration(delay) * time.Millisecond) // default value is 0 milliseconds
 
@@ -604,8 +564,8 @@ func DoReq(stepCounter int, mdi string, config *CfgStruct, result *Result, clien
 	} else if len(cfg.CommandSequence.SessionLog) > 0 {
 		fmt.Fprintf(os.Stderr, "%s\n", SessionLogMacros(mdi, sessionVars, time.Now(), cfg.CommandSequence.SessionLog))
 	}
-	lastSession = session
-	return
+
+	return session
 }
 
 func GetResults(results map[int]*Result, overallStartTime time.Time) map[string]int32 {
@@ -860,42 +820,3 @@ func doLog(command string, config *CfgStruct, requestMethod string, tcpResponse 
 
 	return session, continueSession
 }
-
-func encrypt(key, iv, text []byte) (ciphertextOut []byte, err error) {
-	if len(text) < aes.BlockSize {
-		err = errors.New(fmt.Sprintf("input text is %d bytes, too short to encrypt", len(text)))
-		return
-	}
-	if len(text)%aes.BlockSize != 0 {
-		err = errors.New(fmt.Sprintf("input text is %d bytes, must be a multiple of %d", len(text), aes.BlockSize))
-		return
-	}
-	ciphertextOut = make([]byte, len(string(text)))
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	cfb := cipher.NewCBCEncrypter(block, iv)
-	cfb.CryptBlocks(ciphertextOut, text)
-
-	return
-}
-
-func decrypt(key, iv, ciphertext []byte) (plaintextOut []byte, err error) {
-	plaintextOut = make([]byte, len(ciphertext))
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return
-	}
-	if len(ciphertext) < aes.BlockSize {
-		err = errors.New("ciphertext too short")
-		return
-	}
-	cfb := cipher.NewCBCDecrypter(block, iv)
-	cfb.CryptBlocks(plaintextOut, ciphertext)
-	return
-}
-
-//func noRedirect(req *http.Request, via []*http.Request) error {
-//	return errors.New("Don't redirect!")
-//}

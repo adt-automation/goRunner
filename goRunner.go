@@ -57,7 +57,6 @@ func init() {
 	flag.IntVar(&secsTimedTest, "t", 0, "Time in seconds for a timed load test")
 	flag.StringVar(&inputFile, "f", "", "Read input from file rather than stdin")
 	flag.StringVar(&inputFile1, "fh", "", "Read input from csv file which has a header row")
-	// flag.BoolVar(&noRampUp, "nr", false, "Do not ramp up to total concurrent number of clients")
 	flag.StringVar(&rampUp, "rampUp", "0", "Specify ramp up delay as duration (1m2s, 300ms, ..). 'auto' will compute from client sessions. Default to 0 (no ramp up)")
 	flag.Float64Var(&targetTPS, "targetTPS", 1000000, "The default max TPS is set to 1 million. Good luck reaching this :p")
 	flag.StringVar(&baseUrl, "baseUrl", "", "The host to test. Example https://test2.someserver.org")
