@@ -7,21 +7,17 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"os"
-	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"gopkg.in/gcfg.v1"
 )
 
 // -------------------------------------------------------------------------------------------------
@@ -35,97 +31,18 @@ type Result struct {
 	writeThroughput int32
 }
 
-type CfgStruct struct {
-	Search struct {
-		CommandGrep       string
-		SessionKeyGrep    string
-		SessionCookieName string
-	}
-	Version struct {
-		ConfigVersion string
-	}
-	Command map[string]*struct {
-		ReqUrl           string
-		ReqContentType   string
-		ReqType          string
-		ReqBody          string
-		ReqUpload        string
-		EncryptStartByte string
-		EncryptNumBytes  string
-		EncryptKey       string
-		EncryptIv        string
-		DoCall           string
-		MsecDelay        string
-		MsecRepeat       string
-		Md5Input         string
-		Base64Input      string
-		MustCapture      string
-		ReqHeaders       []string
-		SessionVar       []string
-	}
-	CommandSequence struct {
-		Sequence   string
-		SessionLog string
-	}
-}
-
 var stdoutMutex sync.Mutex
 
-var cfg = CfgStruct{}
+var config = Config{}
 var GrepCommand *regexp.Regexp
 var SessionCookieName string
-var Delimeter string
 var CommandQueue []string
 var PostSessionDelay int
 var initialGetField map[string]bool
 var alwaysFoundSessionVars bool = true
 
-func getFieldString(config *CfgStruct, field string, command string) string {
-	data := ""
-
-	r := reflect.ValueOf(config.Command[command])
-	if !reflect.Indirect(r).IsValid() {
-		r = reflect.ValueOf(config.Command["default"])
-	}
-	if reflect.Indirect(r).IsValid() {
-		f := reflect.Indirect(r).FieldByName(field)
-		if f.String() != "" {
-			data = f.String()
-		} else {
-			r := reflect.ValueOf(config.Command["default"])
-			if reflect.Indirect(r).IsValid() {
-				f := reflect.Indirect(r).FieldByName(field)
-				data = f.String()
-			}
-		}
-	}
-	return data
-}
-
-func getFieldInteger(config *CfgStruct, field string, command string) int {
-	var str = getFieldString(config, field, command)
-	data, err := strconv.Atoi(str)
-	if err != nil {
-		return 0
-	}
-	return data
-}
-
-func responseMustCapture(config *CfgStruct, element string, command string) bool {
-	var mustCapture bool = false
-	var str = getFieldString(config, "MustCapture", command)
-	//fmt.Printf("MustCapture for %s: %q\n", command, strings.Fields(strings.Replace(str, ",", " ", -1)))
-	for _, elem := range strings.Fields(strings.Replace(str, ",", " ", -1)) {
-		if elem == element {
-			mustCapture = true
-			break
-		}
-	}
-	return mustCapture
-}
-
 func PrintLogHeader(inputLine1 string, isInputHeader bool) {
-	d := Delimeter[0]
+	d := delimeter[0]
 	if strings.Index(inputLine1, ",") == -1 {
 		inputLine1 = ""
 	} else {
@@ -140,109 +57,78 @@ func PrintLogHeader(inputLine1 string, isInputHeader bool) {
 			inputLine1 = strings.Join(vals, ",")
 		}
 		if d != ',' {
-			inputLine1 = strings.Replace(inputLine1, ",", Delimeter[0:1], -1)
+			inputLine1 = strings.Replace(inputLine1, ",", delimeter[0:1], -1)
 		}
 	}
 	stdoutMutex.Lock()
 	fmt.Printf("startTime%ccommand%cstep%crequestType%csessionKey%csession%cid%cshortUrl%cstatusCode%csessionVarsOk%cclientId%cbyteSize%cserver%cduration%cserverDuration%cbuildId%s\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, inputLine1)
 	stdoutMutex.Unlock()
-	if len(cfg.CommandSequence.SessionLog) > 0 {
-		fmt.Fprintf(os.Stderr, "%s\n", strings.Replace(strings.Replace(strings.Replace(cfg.CommandSequence.SessionLog, "{%", "", -1), "{$", "", -1), "}", "", -1))
+	if len(config.CommandSequence.SessionLog) > 0 {
+		fmt.Fprintf(os.Stderr, "%s\n", strings.Replace(strings.Replace(strings.Replace(config.CommandSequence.SessionLog, "{%", "", -1), "{$", "", -1), "}", "", -1))
 	}
 }
 
-func NewConfiguration2(configFile string) *CfgStruct {
-	bytes, err1 := ioutil.ReadFile(configFile)
-
-	equalLine := regexp.MustCompile("=")
-	openQuote := regexp.MustCompile("=[\t ]+")
-	closeQuote := regexp.MustCompile("$") // (?m) is a flag that says to treat as multi-line strings (so that $ will match EOL instead of just EOF)
-	output := ""
-	str := strings.Split(string(bytes), "\n")
-	for _, line := range str {
-		if equalLine.MatchString(line) {
-			line = strings.Replace(line, "\"", "\\\"", -1)
-			line = openQuote.ReplaceAllString(line, "= \"")
-			line = closeQuote.ReplaceAllString(line, "\"")
-		}
-		output += line + "\n"
-	}
-	if err1 != nil {
-		log.Fatalf("Failed to open config.ini file: %s", err1)
-	}
-	err2 := gcfg.ReadStringInto(&cfg, output)
-	if err2 != nil {
-		log.Fatalf("Failed to parse gcfg data: %s", err2)
-	}
-	GrepCommand = regexp.MustCompile(cfg.Search.CommandGrep)
-	SessionCookieName = cfg.Search.SessionCookieName
-	initCommandQueue(&cfg)
-	initRunnerMacros(&cfg)
-	return &cfg
-}
-
-func initCommandQueue(cfg *CfgStruct) {
-	if len(cfg.CommandSequence.Sequence) > 0 {
-		for _, cmd := range strings.Split(cfg.CommandSequence.Sequence, ",") {
+func initCommandQueue(config *Config) {
+	if len(config.CommandSequence.Sequence) > 0 {
+		for _, cmd := range strings.Split(config.CommandSequence.Sequence, ",") {
 			CommandQueue = append(CommandQueue, strings.TrimSpace(cmd))
 		}
 	} else {
 		CommandQueue = append(CommandQueue, "_start")
-		cmd := cfg.Command["_start"].DoCall
+		cmd := config.Command["_start"].DoCall
 		for len(cmd) > 0 {
 			if cmd == "none" {
 				break
 			} else {
 				CommandQueue = append(CommandQueue, cmd)
-				cmd = cfg.Command[cmd].DoCall
+				cmd = config.Command[cmd].DoCall
 			}
 		}
 	}
 	li := len(CommandQueue) - 1
 	if li >= 0 {
-		PostSessionDelay = getFieldInteger(cfg, "MsecDelay", CommandQueue[li])
+		PostSessionDelay = config.FieldInteger("MsecDelay", CommandQueue[li])
 	}
 }
 
-func EstimateSessionTime(cfg *CfgStruct) time.Duration {
+func EstimateSessionTime(config *Config) time.Duration {
 	ncq := len(CommandQueue)
 	dur := time.Duration(ncq*100) * time.Millisecond // estimate 100ms / call
 	for i := 0; i < ncq; i++ {
-		repeat := getFieldInteger(cfg, "MsecRepeat", CommandQueue[i])
+		repeat := config.FieldInteger("MsecRepeat", CommandQueue[i])
 		if repeat > 0 {
 			dur += time.Millisecond * time.Duration(repeat)
 		} else if i < ncq-1 { // no post-call delay for final command in sesssion sequence
-			dur += time.Millisecond * time.Duration(getFieldInteger(cfg, "MsecDelay", CommandQueue[i]))
+			dur += time.Millisecond * time.Duration(config.FieldInteger("MsecDelay", CommandQueue[i]))
 		}
 	}
 	return dur
 }
 
-func initRunnerMacros(cfg *CfgStruct) {
-	KvDelimeter = Delimeter
+func initRunnerMacros(config *Config) {
 	for _, cmd := range CommandQueue {
-		InitMacros(cmd, getFieldString(cfg, "ReqBody", cmd))
-		InitMacros(cmd, getFieldString(cfg, "ReqUrl", cmd))
-		InitMacros(cmd, getFieldString(cfg, "EncryptIv", cmd))
-		InitMacros(cmd, getFieldString(cfg, "EncryptKey", cmd))
-		for _, session_var := range cfg.Command[cmd].SessionVar {
+		InitMacros(cmd, config.FieldString("ReqBody", cmd))
+		InitMacros(cmd, config.FieldString("ReqUrl", cmd))
+		InitMacros(cmd, config.FieldString("EncryptIv", cmd))
+		InitMacros(cmd, config.FieldString("EncryptKey", cmd))
+		for _, session_var := range config.Command[cmd].SessionVar {
 			s := strings.SplitN(session_var, " ", 2) // s = ['CUSTNO', '<extId>{%VAL}</extId>']
 			InitMacros(cmd, s[1])
 		}
-		InitMd5Macro(cmd, getFieldString(cfg, "Md5Input", cmd))
-		InitBase64Macro(cmd, getFieldString(cfg, "Base64Input", cmd))
+		InitMd5Macro(cmd, config.FieldString("Md5Input", cmd))
+		InitBase64Macro(cmd, config.FieldString("Base64Input", cmd))
 	}
-	InitSessionLogMacros(cfg.CommandSequence.SessionLog)
+	InitSessionLogMacros(config.CommandSequence.SessionLog)
 	InitUnixtimeMacros()
 }
 
-func httpReq(inputData string, config *CfgStruct, command string, baseUrl string, tr *http.Transport, cookieMap map[string]*http.Cookie, sessionVars map[string]string, reqTime time.Time) (*http.Request, *http.Response, error) {
+func httpReq(inputData string, config *Config, command string, baseUrl string, tr *http.Transport, cookieMap map[string]*http.Cookie, sessionVars map[string]string, reqTime time.Time) (*http.Request, *http.Response, error) {
 
 	var reqErr error
 
 	//this is where all the good stuff happens
 	//"DEVICE_INFORMATION", "RING", "SET_ADMIN", "MESSAGE", "INSTALL_MDM", "InstallProfile", "TENANT_INFO", ...
-	arr := strings.Split(inputData, Delimeter) // for 2 value inputs to stdin
+	arr := strings.Split(inputData, delimeter) // for 2 value inputs to stdin
 	var key, val, body, urlx string
 	var r *strings.Replacer
 	if len(arr) > 1 {
@@ -261,16 +147,16 @@ func httpReq(inputData string, config *CfgStruct, command string, baseUrl string
 		)
 	}
 
-	body = r.Replace(getFieldString(config, "ReqBody", command))
-	urlx = getFieldString(config, "ReqUrl", command)
+	body = r.Replace(config.FieldString("ReqBody", command))
+	urlx = config.FieldString("ReqUrl", command)
 	if strings.HasPrefix(urlx, "http://") || strings.HasPrefix(urlx, "https://") {
 		urlx = r.Replace(urlx)
 	} else {
 		urlx = r.Replace(baseUrl + urlx)
 	}
 
-	requestContentType := getFieldString(config, "ReqContentType", command)
-	requestType := getFieldString(config, "ReqType", command)
+	requestContentType := config.FieldString("ReqContentType", command)
+	requestType := config.FieldString("ReqType", command)
 
 	body = RunnerMacros(command, inputData, sessionVars, reqTime, body)
 	urlx = RunnerMacros(command, inputData, sessionVars, reqTime, urlx)
@@ -278,7 +164,7 @@ func httpReq(inputData string, config *CfgStruct, command string, baseUrl string
 	reqReader := io.Reader(bytes.NewReader([]byte(body)))
 	requestContentSize := int64(len(body))
 
-	reqUpload := getFieldString(config, "ReqUpload", command)
+	reqUpload := config.FieldString("ReqUpload", command)
 	if len(reqUpload) > 0 {
 		file, err := os.Open(reqUpload)
 		defer file.Close()
@@ -305,12 +191,12 @@ func httpReq(inputData string, config *CfgStruct, command string, baseUrl string
 	}
 
 	// default headers here
-	for _, hdr := range cfg.Command["default"].ReqHeaders {
+	for _, hdr := range config.Command["default"].ReqHeaders {
 		str := strings.Split(hdr, ":")
 		req.Header.Set(str[0], strings.TrimSpace(str[1]))
 	}
 	// command-specific headers here
-	for _, hdr := range cfg.Command[command].ReqHeaders {
+	for _, hdr := range config.Command[command].ReqHeaders {
 		str := strings.Split(hdr, ":")
 		req.Header.Set(str[0], strings.TrimSpace(str[1]))
 	}
@@ -420,7 +306,7 @@ func httpRoundTrip(tr *http.Transport, req *http.Request) (*http.Response, error
 }
 
 // e.g. servAddr := "gsess-dr.adtpulse.com:11083"
-func tcpReq(inputData string, config *CfgStruct, command string, servAddr string, sessionVars map[string]string) []byte {
+func tcpReq(inputData string, config *Config, command string, servAddr string, sessionVars map[string]string) []byte {
 
 	var reqTime time.Time = time.Now()
 
@@ -435,7 +321,7 @@ func tcpReq(inputData string, config *CfgStruct, command string, servAddr string
 		os.Exit(1)
 	}
 
-	input := getFieldString(config, "ReqBody", command)
+	input := config.FieldString("ReqBody", command)
 	input = RunnerMacros(command, inputData, sessionVars, reqTime, input)
 
 	send, err := hex.DecodeString(strings.Replace(input, " ", "", -1))
@@ -444,8 +330,8 @@ func tcpReq(inputData string, config *CfgStruct, command string, servAddr string
 		os.Exit(1)
 	}
 
-	encryptStart := getFieldInteger(config, "EncryptStartByte", command) - 1
-	encryptCt := getFieldInteger(config, "EncryptNumBytes", command)
+	encryptStart := config.FieldInteger("EncryptStartByte", command) - 1
+	encryptCt := config.FieldInteger("EncryptNumBytes", command)
 	if encryptCt > 0 && encryptStart > -1 {
 		if encryptStart+encryptCt > len(send) {
 			fmt.Fprintf(os.Stderr, "command %s: encrypt range past end of input text\n", command)
@@ -453,7 +339,7 @@ func tcpReq(inputData string, config *CfgStruct, command string, servAddr string
 		}
 		ebytes := send[encryptStart : encryptStart+encryptCt]
 
-		ivStr := getFieldString(config, "EncryptIv", command)
+		ivStr := config.FieldString("EncryptIv", command)
 		ivStr = RunnerMacros(command, inputData, sessionVars, reqTime, ivStr)
 		iv, err := hex.DecodeString(strings.Replace(ivStr, " ", "", -1))
 		if err != nil {
@@ -461,7 +347,7 @@ func tcpReq(inputData string, config *CfgStruct, command string, servAddr string
 			os.Exit(1)
 		}
 		iv = buildIv(reqTime)
-		keyStr := getFieldString(config, "EncryptKey", command)
+		keyStr := config.FieldString("EncryptKey", command)
 		keyStr = RunnerMacros(command, inputData, sessionVars, reqTime, keyStr)
 
 		if len(keyStr) == 0 {
@@ -510,12 +396,20 @@ func tcpReq(inputData string, config *CfgStruct, command string, servAddr string
 	return reply[0:responseLen]
 }
 
-func DoReq(stepCounter int, mdi string, config *CfgStruct, result *Result, clientId int, baseUrl string, baseUrlFilter *regexp.Regexp, delay int, tr *http.Transport, cookieMap map[string]*http.Cookie, sessionVars map[string]string, stopTime time.Time, commandTime float64) string {
+func DoReq(stepCounter int, mdi string, config *Config, result *Result, clientId int, baseUrl string, baseUrlFilter *regexp.Regexp, delay int, tr *http.Transport, cookieMap map[string]*http.Cookie, sessionVars map[string]string, stopTime time.Time, commandTime float64) string {
 
 	if !stopTime.IsZero() && time.Now().Add(time.Duration(delay)*time.Millisecond).After(stopTime) {
 		return ""
 	}
 	time.Sleep(time.Duration(delay) * time.Millisecond) // default value is 0 milliseconds
+
+	var (
+		tcpReply    []byte
+		httpResp    *http.Response
+		httpError   error
+		httpRequest *http.Request
+		shortUrl    string
+	)
 
 	command := CommandQueue[stepCounter]
 	stepCounter += 1
@@ -526,14 +420,10 @@ func DoReq(stepCounter int, mdi string, config *CfgStruct, result *Result, clien
 	if !ok {
 		fmt.Fprintf(os.Stderr, "ERROR: command %q is not defined in the .ini file\n", command)
 	} else {
+		// -----------------------------------------------------------------------------------------
+		// Perform TCP or HTTP request
 		startTime := time.Now()
-		requestType := getFieldString(config, "ReqType", command)
-		var tcpReply []byte
-		var httpResp *http.Response
-		var httpError error
-		var httpRequest *http.Request
-		var shortUrl string
-
+		requestType := config.FieldString("ReqType", command)
 		if requestType == "TCP" {
 			tcpReply = tcpReq(mdi, config, command, baseUrl, sessionVars)
 			shortUrl = (baseUrlFilter).ReplaceAllString(baseUrl, "")
@@ -543,12 +433,14 @@ func DoReq(stepCounter int, mdi string, config *CfgStruct, result *Result, clien
 			requestType = httpRequest.Method
 
 		}
-		// doLog
+
+		// -----------------------------------------------------------------------------------------
+		// Process request response & log
 		session, continueSession = doLog(command, config, requestType, tcpReply, httpResp, result, httpError, startTime, shortUrl, mdi, clientId, stepCounter, "", sessionVars)
 
-		delay = getFieldInteger(config, "MsecDelay", command)
+		delay = config.FieldInteger("MsecDelay", command)
 
-		repeatTime := float64(getFieldInteger(config, "MsecRepeat", command))
+		repeatTime := float64(config.FieldInteger("MsecRepeat", command))
 		requestTime := float64(delay) + (time.Since(startTime)).Seconds()*1000.0
 		// add delay again here, to find out whether the delay will put us past the repeat time
 		if commandTime+requestTime+float64(delay) < repeatTime {
@@ -565,8 +457,8 @@ func DoReq(stepCounter int, mdi string, config *CfgStruct, result *Result, clien
 
 	if continueSession && stepCounter < len(CommandQueue) && CommandQueue[stepCounter] != "none" {
 		session = DoReq(stepCounter, mdi, config, result, clientId, baseUrl, baseUrlFilter, delay, tr, cookieMap, sessionVars, stopTime, commandTime)
-	} else if len(cfg.CommandSequence.SessionLog) > 0 {
-		fmt.Fprintf(os.Stderr, "%s\n", SessionLogMacros(mdi, sessionVars, time.Now(), cfg.CommandSequence.SessionLog))
+	} else if len(config.CommandSequence.SessionLog) > 0 {
+		fmt.Fprintf(os.Stderr, "%s\n", SessionLogMacros(mdi, sessionVars, time.Now(), config.CommandSequence.SessionLog))
 	}
 
 	return session
@@ -619,7 +511,7 @@ func exitStatus(myMap map[string]int32) int {
 	}
 }
 
-func findSessionVars(command string, config *CfgStruct, input string, inputData string, startTime time.Time, sessionVars map[string]string, hex bool) (bool, bool) {
+func findSessionVars(command string, config *Config, input string, inputData string, startTime time.Time, sessionVars map[string]string, hex bool) (bool, bool) {
 
 	if len(input) <= 2 {
 		// automatically false due to no chance to capture the session var
@@ -630,7 +522,7 @@ func findSessionVars(command string, config *CfgStruct, input string, inputData 
 	foundMustCaptures := true
 
 	// set any session vars listed for current command, e.g. SessionVar = XTOKEN detail="(.+)"
-	for _, session_var := range cfg.Command[command].SessionVar {
+	for _, session_var := range config.Command[command].SessionVar {
 		s := strings.SplitN(session_var, " ", 2) // s = ['XTOKEN', 'detail="(.+)"']
 		svar := s[0]
 		sgrep := RunnerMacrosRegexp(command, inputData, sessionVars, startTime, s[1])
@@ -663,7 +555,8 @@ func findSessionVars(command string, config *CfgStruct, input string, inputData 
 		} else {
 			fmt.Fprintf(os.Stderr, "ERROR: SessionVar %s from command \"%s\" was not set \n", svar, command)
 			foundSessionVars = false
-			if responseMustCapture(config, svar, command) {
+
+			if config.MustCaptureElement(svar, command) {
 				foundMustCaptures = false
 			}
 		}
@@ -672,7 +565,7 @@ func findSessionVars(command string, config *CfgStruct, input string, inputData 
 
 }
 
-func doLog(command string, config *CfgStruct, requestMethod string, tcpResponse []byte, httpResponse *http.Response, result *Result, err error, startTime time.Time, shortUrl string, mdi string, clientId int, stepCounter int, lastSession string, sessionVars map[string]string) (string, bool) {
+func doLog(command string, config *Config, requestMethod string, tcpResponse []byte, httpResponse *http.Response, result *Result, err error, startTime time.Time, shortUrl string, mdi string, clientId int, stepCounter int, lastSession string, sessionVars map[string]string) (string, bool) {
 
 	var (
 		sessionKey        string
@@ -700,34 +593,23 @@ func doLog(command string, config *CfgStruct, requestMethod string, tcpResponse 
 		inputVals = inputSplit[1]
 		if len(inputVals) > 0 {
 			inputVals = "," + inputVals
-			if Delimeter[0] != ',' {
-				inputVals = strings.Replace(inputVals, ",", Delimeter[0:1], -1)
+			if delimeter[0] != ',' {
+				inputVals = strings.Replace(inputVals, ",", delimeter[0:1], -1)
 			}
 		}
 	}
 	continueSession = true
 	sessionKey = "0"
-
 	tcp = requestMethod == "TCP"
 
+	atomic.AddInt32(&result.Requests, 1) //atomic++
+
 	// ---------------------------------------------------------------------------------------------
-	// Init default vars
+	// Process TCP
 	if tcp {
 		session = lastSession
 		statusCode = 200
 		byteSize = len(tcpResponse)
-	} else {
-		if requestMethod == "" {
-			requestMethod = "REQ"
-		}
-		statusCode = 499
-		server = "-1"     //default unknown
-		serverTime = 10.0 //default to a big number so it will be noticed in the output data
-	}
-
-	atomic.AddInt32(&result.Requests, 1) //atomic++
-
-	if tcp {
 		atomic.AddInt32(&result.success, 1)
 		// no failure cases yet, use these when we add that logic
 		//atomic.AddInt32(&result.networkFailed, 1)
@@ -736,90 +618,99 @@ func doLog(command string, config *CfgStruct, requestMethod string, tcpResponse 
 		foundSessionVars, foundMustCaptures := findSessionVars(command, config, fmt.Sprintf("%x", tcpResponse), inputData, startTime, sessionVars, tcp)
 		alwaysFoundSessionVars = alwaysFoundSessionVars && foundSessionVars
 		continueSession = continueSession && foundMustCaptures
-	} else {
-		// HTTP
-		if httpResponse != nil {
-			//The reason we check for session here is so that registration does not have to use the sessionMap
-			//The registration process can be defined to use the account_key, while regular device interaction might use mdi (or device) key
-			if httpResponse.Header.Get("Set-Cookie") != "" {
-				for _, cookie := range httpResponse.Cookies() {
+		goto OUTPUTLOG
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Process HTTP
+	if requestMethod == "" {
+		requestMethod = "REQ"
+	}
+	statusCode = 499
+	server = "-1"     //default unknown
+	serverTime = 10.0 //default to a big number so it will be noticed in the output data
+	if httpResponse != nil {
+		//The reason we check for session here is so that registration does not have to use the sessionMap
+		//The registration process can be defined to use the account_key, while regular device interaction might use mdi (or device) key
+		if httpResponse.Header.Get("Set-Cookie") != "" {
+			for _, cookie := range httpResponse.Cookies() {
+				if verbose {
+					fmt.Fprintf(os.Stderr, "cookie nameX=%v\n\n", cookie)
+				}
+				if cookie.Name == SessionCookieName {
+					session = cookie.Value
 					if verbose {
-						fmt.Fprintf(os.Stderr, "cookie nameX=%v\n\n", cookie)
-					}
-					if cookie.Name == SessionCookieName {
-						session = cookie.Value
-						if verbose {
-							fmt.Fprintf(os.Stderr, "session=%v\n", cookie)
-						}
+						fmt.Fprintf(os.Stderr, "session=%v\n", cookie)
 					}
 				}
 			}
-			if session == "" {
-				session = lastSession
-			}
+		}
+		if session == "" {
+			session = lastSession
+		}
 
-			dump, err := httputil.DumpResponse(httpResponse, true)
-			byteSize = len(dump)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "ERROR \"%s\" dumping http response to local (cient %d command %s input %s)\n", err.Error(), clientId, command, mdi)
-			}
+		dump, err := httputil.DumpResponse(httpResponse, true)
+		byteSize = len(dump)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR \"%s\" dumping http response to local (cient %d command %s input %s)\n", err.Error(), clientId, command, mdi)
+		}
 
-			sessionVarsInput := strings.Replace(string(dump), "\r", "", -1)
-			foundSessionVars, foundMustCaptures = findSessionVars(command, config, sessionVarsInput, inputData, startTime, sessionVars, false)
-			alwaysFoundSessionVars = alwaysFoundSessionVars && foundSessionVars
-			continueSession = continueSession && foundMustCaptures
+		sessionVarsInput := strings.Replace(string(dump), "\r", "", -1)
+		foundSessionVars, foundMustCaptures = findSessionVars(command, config, sessionVarsInput, inputData, startTime, sessionVars, false)
+		alwaysFoundSessionVars = alwaysFoundSessionVars && foundSessionVars
+		continueSession = continueSession && foundMustCaptures
 
-			if httpResponse.StatusCode >= 200 && httpResponse.StatusCode < 400 { //was300
-				atomic.AddInt32(&result.success, 1) //atomic++
-			} else {
-				atomic.AddInt32(&result.badFailed, 1) //atomic++
-			}
-			statusCode = httpResponse.StatusCode
-
-			server = httpResponse.Header.Get("X-someserver")
-
-			if server == "" {
-				server = "-1" //web01/02/03 would be 1,2,3. -1 means unknown
-			}
-			serverTimeStr := httpResponse.Header.Get("X-someserver-Load-Time")
-			serverTime, err = strconv.ParseFloat(serverTimeStr, 10)
-			if err != nil {
-				serverTime = 10 //just a big number (in seconds) so we notice if it was missing
-			} else {
-				serverTime = serverTime / 1000
-			}
-			if httpResponse.Body != nil {
-				httpResponse.Body.Close()
-			}
+		if httpResponse.StatusCode >= 200 && httpResponse.StatusCode < 400 { //was300
+			atomic.AddInt32(&result.success, 1) //atomic++
 		} else {
-			atomic.AddInt32(&result.networkFailed, 1) //atomic++
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "ERROR: %s on command \"%s\" response (client %d, input \"%s\")\n", err.Error(), command, clientId, mdi)
-			} else {
-				fmt.Fprintf(os.Stderr, "ERROR: no response on command \"%s\" response (client %d, input \"%s\")\n", command, clientId, mdi)
-			}
-			sessionVars := make([]string, 0)
-			for _, session_var := range cfg.Command[command].SessionVar {
-				s := strings.SplitN(session_var, " ", 2) // s = ['XTOKEN', 'detail="(.+)"']
-				sessionVars = append(sessionVars, s[0])
-			}
-			if len(sessionVars) > 0 {
-				fmt.Fprintf(os.Stderr, "ERROR: SessionVars \"%s\" from command \"%s\" were not matched in bad/empty/undelivered response (client %d, input \"%s\")\n",
-					strings.Join(sessionVars, ","), command, clientId, mdi)
-				foundSessionVars = false
-			}
-			var mustCapture = getFieldString(config, "MustCapture", command)
-			if len(mustCapture) > 0 {
-				fmt.Fprintf(os.Stderr, "ERROR: MustCapture \"%s\" from command \"%s\" was not matched in bad/empty/undelivered response (client %d, input \"%s\")\n",
-					mustCapture, command, clientId, mdi)
-				continueSession = false
-			}
+			atomic.AddInt32(&result.badFailed, 1) //atomic++
+		}
+		statusCode = httpResponse.StatusCode
+
+		server = httpResponse.Header.Get("X-someserver")
+
+		if server == "" {
+			server = "-1" //web01/02/03 would be 1,2,3. -1 means unknown
+		}
+		serverTimeStr := httpResponse.Header.Get("X-someserver-Load-Time")
+		serverTime, err = strconv.ParseFloat(serverTimeStr, 10)
+		if err != nil {
+			serverTime = 10 //just a big number (in seconds) so we notice if it was missing
+		} else {
+			serverTime = serverTime / 1000
+		}
+		if httpResponse.Body != nil {
+			httpResponse.Body.Close()
+		}
+	} else {
+		atomic.AddInt32(&result.networkFailed, 1) //atomic++
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR: %s on command \"%s\" response (client %d, input \"%s\")\n", err.Error(), command, clientId, mdi)
+		} else {
+			fmt.Fprintf(os.Stderr, "ERROR: no response on command \"%s\" response (client %d, input \"%s\")\n", command, clientId, mdi)
+		}
+		sessionVars := make([]string, 0)
+		for _, session_var := range config.Command[command].SessionVar {
+			s := strings.SplitN(session_var, " ", 2) // s = ['XTOKEN', 'detail="(.+)"']
+			sessionVars = append(sessionVars, s[0])
+		}
+		if len(sessionVars) > 0 {
+			fmt.Fprintf(os.Stderr, "ERROR: SessionVars \"%s\" from command \"%s\" were not matched in bad/empty/undelivered response (client %d, input \"%s\")\n",
+				strings.Join(sessionVars, ","), command, clientId, mdi)
+			foundSessionVars = false
+		}
+		var mustCapture = config.FieldString("MustCapture", command)
+		if len(mustCapture) > 0 {
+			fmt.Fprintf(os.Stderr, "ERROR: MustCapture \"%s\" from command \"%s\" was not matched in bad/empty/undelivered response (client %d, input \"%s\")\n",
+				mustCapture, command, clientId, mdi)
+			continueSession = false
 		}
 	}
 
+OUTPUTLOG:
 	const layout = "2006-01-02 15:04:05.000"
 
-	d := Delimeter[0]
+	d := delimeter[0]
 
 	stdoutMutex.Lock()
 	fmt.Printf("%v%c%s%c%d%c%s%c%s%c%s%c%s%c%s%c%d%c%v%c%d%c%d%c%v%c%.3f%c%.3f%c%s%s\n", startTime.Format(layout), d, command, d, stepCounter, d, requestMethod, d, sessionKey, d, session, d, mdi, d, shortUrl, d, statusCode, d, foundSessionVars, d, clientId, d, byteSize, d, server, d, duration, d, serverTime, d, Build, inputVals)

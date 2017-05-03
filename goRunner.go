@@ -118,7 +118,6 @@ func main() {
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
 	}
-	Delimeter = delimeter //set the delimeter we want for the output log in the imported runner package
 	if !headerExit && baseUrl == "" {
 		fmt.Fprintf(os.Stderr, "\nPlease provide the baseUrl...\n\n")
 		flag.Usage()
@@ -133,7 +132,7 @@ func main() {
 
 	overallStartTime := time.Now()
 	baseUrlFilter := regexp.MustCompile(baseUrl)
-	configuration := NewConfiguration2(configFile)
+	configuration := NewConfig(configFile)
 	results := make(map[int]*Result)
 	signalChannel := make(chan os.Signal, 2)
 	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)
@@ -221,7 +220,7 @@ func main() {
 	ExitWithStatus(results, overallStartTime)
 }
 
-func calcRampUpDelay(cfg *CfgStruct) time.Duration {
+func calcRampUpDelay(cfg *Config) time.Duration {
 	if clients == 0 {
 		return time.Duration(0)
 	} else {
@@ -234,7 +233,7 @@ func calcRampUpDelay(cfg *CfgStruct) time.Duration {
 //func noRedirect(req *http.Request, via []*http.Request) error {
 //	return errors.New("Don't redirect!")
 //}
-func client(tr *http.Transport, configuration *CfgStruct, result *Result, done *sync.WaitGroup, trafficChannel chan string, clientId int, baseUrlFilter *regexp.Regexp, stopTime time.Time, initialDelay time.Duration) {
+func client(tr *http.Transport, configuration *Config, result *Result, done *sync.WaitGroup, trafficChannel chan string, clientId int, baseUrlFilter *regexp.Regexp, stopTime time.Time, initialDelay time.Duration) {
 	defer done.Done()
 	// strangely, this sleep cannot be moved outside the client function
 	// or all client threads will wait until the last one is spawned before starting their own execution loops
@@ -257,7 +256,7 @@ func client(tr *http.Transport, configuration *CfgStruct, result *Result, done *
 	}
 }
 
-func printSessionSummary(configuration *CfgStruct, configFile string) {
+func printSessionSummary(configuration *Config, configFile string) {
 	fmt.Fprintf(os.Stderr, "GORUNNER\n")
 	if len(configuration.Version.ConfigVersion) > 5 {
 		fmt.Fprintf(os.Stderr, "Configuration:                  %s version %s\n", configFile, configuration.Version.ConfigVersion[5:len(configuration.Version.ConfigVersion)-1])
