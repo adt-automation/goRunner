@@ -55,6 +55,7 @@ func init() {
 	flag.BoolVar(&dump, "dump", false, "Show the HTTP dump for the api call")
 	flag.StringVar(&configFile, "configFile", "config.ini", "Config file location")
 	flag.StringVar(&delimeter, "d", ",", "Output file delimeter")
+	flag.BoolVar(&headerExit, "hx", false, "Print output header row and exit")
 	flag.BoolVar(&headerRow, "header", true, "Output header row. Default to true.")
 	flag.DurationVar(&readTimeout, "readtimeout", time.Duration(30)*time.Second, "Timeout in seconds for the target API to send the first response byte. Default 30 seconds")
 	flag.StringVar(&cpuProfile, "cpuprofile", "", "write cpu profile to file")
@@ -75,8 +76,8 @@ func init() {
 
 	flag.Usage = func() {
 		defaultUsage()
-		fmt.Fprintf(os.Stderr, "\n\n")
-		PrintLogHeader(delimeter)
+		// fmt.Fprintf(os.Stderr, "\n\n")
+		// PrintLogHeader(delimeter)
 	}
 }
 
@@ -84,6 +85,11 @@ func main() {
 	// ---------------------------------------------------------------------------------------------
 	// Parse flags
 	flag.Parse()
+
+	if headerExit {
+		PrintLogHeader(delimeter)
+		os.Exit(0)
+	}
 
 	// ---------------------------------------------------------------------------------------------
 	// Validate input & flags
