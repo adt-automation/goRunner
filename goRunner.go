@@ -13,15 +13,12 @@ package main
 
 import (
 	"bufio"
-	"crypto/tls"
 	"flag"
 	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
 	"runtime/pprof"
-	"sync"
 	"syscall"
 	"time"
 )
@@ -120,12 +117,6 @@ func main() {
 	// ---------------------------------------------------------------------------------------------
 	// Init runner
 	runner := NewRunner(configFile)
-	results := make(map[int]*Result)
-	rampUpDelay := runner.RampUpDelay()
-	trafficChannel := make(chan string)
-	//	startTraffic(trafficChannel) //start reading on the channel
-	httpTransport := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}} //allow wrong ssl certs
-	httpTransport.ResponseHeaderTimeout = readTimeout
 
 	// ---------------------------------------------------------------------------------------------
 	// Catch interrupt
@@ -133,29 +124,17 @@ func main() {
 	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		_ = <-signalChannel
-		runner.ExitWithStatus(results)
+		runner.Exit()
 	}()
-
-	if !headerExit {
-		runner.printSessionSummary()
-	}
-
-	fmt.Fprintf(os.Stderr, "Spacing sessions %v apart to ramp up to %d client sessions\n", rampUpDelay, clients)
 
 	// ---------------------------------------------------------------------------------------------
 	// Start clients
-	var wgClients sync.WaitGroup
-	var stopTime time.Time // client loops will work to the end of trafficChannel unless we explicitly init a stopTime
-	if testTimeout > 0 {
-		stopTime = time.Now().Add(testTimeout)
+	if !headerExit {
+		runner.printSessionSummary()
 	}
-	for i := 0; i < clients; i++ {
-		wgClients.Add(1)
-		result := &Result{}
-		results[i] = result
-		clientDelay := rampUpDelay * time.Duration(i)
-		go client(httpTransport, runner, result, &wgClients, trafficChannel, i, stopTime, clientDelay)
-	}
+	trafficChannel := make(chan string)
+	//	startTraffic(trafficChannel) //start reading on the channel
+	runner.StartClients(trafficChannel)
 
 	// ---------------------------------------------------------------------------------------------
 	// Read input from file or stdin
@@ -189,35 +168,11 @@ func main() {
 		trafficChannel <- scanner.Text() //put work into the channel from Stdin
 	}
 	close(trafficChannel)
-	wgClients.Wait()
-	runner.ExitWithStatus(results)
-}
 
-//one client per -c=thread
-//func noRedirect(req *http.Request, via []*http.Request) error {
-//	return errors.New("Don't redirect!")
-//}
-func client(tr *http.Transport, runner *Runner, result *Result, done *sync.WaitGroup, trafficChannel chan string, clientId int, stopTime time.Time, initialDelay time.Duration) {
-	defer done.Done()
-	// strangely, this sleep cannot be moved outside the client function
-	// or all client threads will wait until the last one is spawned before starting their own execution loops
-	time.Sleep(initialDelay)
-
-	msDelay := 0
-	for id := range trafficChannel {
-		//read in the line. either a generated id or (TODO) a url
-		//		id := <-trafficChannel //urlTemplate : 100|10000|about
-
-		//Do Heartbeat
-		// cookieMap and sessionVars should start fresh every time we start a DoReq session
-		var cookieMap = make(map[string]*http.Cookie)
-		var sessionVars = make(map[string]string)
-		runner.DoReq(0, id, result, clientId, baseUrl, msDelay, tr, cookieMap, sessionVars, stopTime, 0.0) //val,resp, err
-		msDelay = runner.PostSessionDelay
-	}
-	if time.Now().Before(stopTime) {
-		fmt.Fprintf(os.Stderr, "client %d ran out of test input %.2fs before full test time\n", clientId, stopTime.Sub(time.Now()).Seconds())
-	}
+	// ---------------------------------------------------------------------------------------------
+	// Wait for clients to be done and exit
+	runner.Wait()
+	runner.Exit()
 }
 
 func flagError(err string) {
@@ -240,3 +195,6 @@ func generateInput() chan string {
 	return lines
 }
 */
+//func noRedirect(req *http.Request, via []*http.Request) error {
+//	return errors.New("Don't redirect!")
+//}

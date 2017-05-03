@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -23,7 +24,7 @@ import (
 // -------------------------------------------------------------------------------------------------
 // Models
 type Result struct {
-	Requests        int32
+	requests        int32
 	success         int32
 	networkFailed   int32
 	badFailed       int32
@@ -32,51 +33,67 @@ type Result struct {
 }
 
 type Runner struct {
-	config                 *Config
-	stdoutMutex            sync.Mutex
-	CommandQueue           []string
-	SessionCookieName      string
-	alwaysFoundSessionVars bool
-	PostSessionDelay       int
-	GrepCommand            *regexp.Regexp
-	startTime              time.Time
-	baseUrlFilter          *regexp.Regexp
+	config       *Config
+	results      map[int]*Result
+	commandQueue []string
+
+	foundAllSessionVars bool
+	postSessionDelay    int
+	startTime           time.Time
+	stopTime            time.Time
+	rampUpDelay         time.Duration
+
+	wgClients     sync.WaitGroup
+	httpTransport *http.Transport
+	reUrlFilter   *regexp.Regexp
+	stdoutMutex   sync.Mutex
 }
 
 func NewRunner(configFile string) *Runner {
-	toReturn := &Runner{alwaysFoundSessionVars: true, startTime: time.Now()}
+	toReturn := &Runner{foundAllSessionVars: true, startTime: time.Now()}
 	config := NewConfig(configFile)
 	toReturn.config = config
-	toReturn.GrepCommand = regexp.MustCompile(config.Search.CommandGrep)
-	toReturn.SessionCookieName = config.Search.SessionCookieName
-	toReturn.baseUrlFilter = regexp.MustCompile(baseUrl)
+	toReturn.reUrlFilter = regexp.MustCompile(baseUrl)
+	toReturn.results = make(map[int]*Result)
+
+	// ---------------------------------------------------------------------------------------------
+	// Set delays and timeouts
+	if testTimeout > 0 {
+		// client loops will work to the end of trafficChannel unless we explicitly init a stopTime
+		toReturn.stopTime = time.Now().Add(testTimeout)
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Init http transport
+	toReturn.httpTransport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}} //allow wrong ssl certs
+	toReturn.httpTransport.ResponseHeaderTimeout = readTimeout
 
 	// ---------------------------------------------------------------------------------------------
 	// Init command queue
 	if len(config.CommandSequence.Sequence) > 0 {
 		for _, cmd := range strings.Split(config.CommandSequence.Sequence, ",") {
-			toReturn.CommandQueue = append(toReturn.CommandQueue, strings.TrimSpace(cmd))
+			toReturn.commandQueue = append(toReturn.commandQueue, strings.TrimSpace(cmd))
 		}
 	} else {
-		toReturn.CommandQueue = append(toReturn.CommandQueue, "_start")
+		toReturn.commandQueue = append(toReturn.commandQueue, "_start")
 		cmd := config.Command["_start"].DoCall
 		for len(cmd) > 0 {
 			if cmd == "none" {
 				break
 			} else {
-				toReturn.CommandQueue = append(toReturn.CommandQueue, cmd)
+				toReturn.commandQueue = append(toReturn.commandQueue, cmd)
 				cmd = config.Command[cmd].DoCall
 			}
 		}
 	}
-	li := len(toReturn.CommandQueue) - 1
+	li := len(toReturn.commandQueue) - 1
 	if li >= 0 {
-		toReturn.PostSessionDelay = config.FieldInteger("MsecDelay", toReturn.CommandQueue[li])
+		toReturn.postSessionDelay = config.FieldInteger("MsecDelay", toReturn.commandQueue[li])
 	}
 
 	// ---------------------------------------------------------------------------------------------
 	// Init runner macros
-	for _, cmd := range toReturn.CommandQueue {
+	for _, cmd := range toReturn.commandQueue {
 		InitMacros(cmd, config.FieldString("ReqBody", cmd))
 		InitMacros(cmd, config.FieldString("ReqUrl", cmd))
 		InitMacros(cmd, config.FieldString("EncryptIv", cmd))
@@ -91,7 +108,57 @@ func NewRunner(configFile string) *Runner {
 	InitSessionLogMacros(config.CommandSequence.SessionLog)
 	InitUnixtimeMacros()
 
+	// ---------------------------------------------------------------------------------------------
+	// Init rampUpDelay
+	toReturn.rampUpDelay = rampUp
+	if rampUp == -1 {
+		sessionTime := toReturn.EstimateSessionTime()
+		toReturn.rampUpDelay = sessionTime / time.Duration(clients)
+	}
+
 	return toReturn
+}
+
+func (runner *Runner) Wait() {
+	runner.wgClients.Wait()
+}
+
+func (runner *Runner) StartClients(trafficChannel chan string) {
+
+	fmt.Fprintf(os.Stderr, "Spacing sessions %v apart to ramp up to %d client sessions\n", runner.rampUpDelay, clients)
+
+	for i := 0; i < clients; i++ {
+		runner.wgClients.Add(1)
+		result := &Result{}
+		runner.results[i] = result
+		clientDelay := runner.rampUpDelay * time.Duration(i)
+		go runner.client(result, trafficChannel, i, clientDelay)
+	}
+}
+
+//one client per -c=thread
+
+func (runner *Runner) client(result *Result, trafficChannel chan string, clientId int, initialDelay time.Duration) {
+	defer runner.wgClients.Done()
+	// strangely, this sleep cannot be moved outside the client function
+	// or all client threads will wait until the last one is spawned before starting their own execution loops
+	time.Sleep(initialDelay)
+
+	msDelay := 0
+	for id := range trafficChannel {
+		//read in the line. either a generated id or (TODO) a url
+		//		id := <-trafficChannel //urlTemplate : 100|10000|about
+
+		//Do Heartbeat
+		// cookieMap and sessionVars should start fresh every time we start a DoReq session
+		var cookieMap = make(map[string]*http.Cookie)
+		var sessionVars = make(map[string]string)
+		runner.DoReq(0, id, result, clientId, baseUrl, msDelay, cookieMap, sessionVars, 0.0) //val,resp, err
+		msDelay = runner.postSessionDelay
+	}
+	if time.Now().Before(runner.stopTime) {
+		fmt.Fprintf(os.Stderr, "client %d ran out of test input %.2fs before full test time\n", clientId, runner.stopTime.Sub(time.Now()).Seconds())
+	}
 }
 
 func (runner *Runner) PrintLogHeader(inputLine1 string, isInputHeader bool) {
@@ -122,28 +189,20 @@ func (runner *Runner) PrintLogHeader(inputLine1 string, isInputHeader bool) {
 }
 
 func (runner *Runner) EstimateSessionTime() time.Duration {
-	ncq := len(runner.CommandQueue)
+	ncq := len(runner.commandQueue)
 	dur := time.Duration(ncq*100) * time.Millisecond // estimate 100ms / call
 	for i := 0; i < ncq; i++ {
-		repeat := runner.config.FieldInteger("MsecRepeat", runner.CommandQueue[i])
+		repeat := runner.config.FieldInteger("MsecRepeat", runner.commandQueue[i])
 		if repeat > 0 {
 			dur += time.Millisecond * time.Duration(repeat)
 		} else if i < ncq-1 { // no post-call delay for final command in sesssion sequence
-			dur += time.Millisecond * time.Duration(runner.config.FieldInteger("MsecDelay", runner.CommandQueue[i]))
+			dur += time.Millisecond * time.Duration(runner.config.FieldInteger("MsecDelay", runner.commandQueue[i]))
 		}
 	}
 	return dur
 }
 
-func (runner *Runner) RampUpDelay() time.Duration {
-	if rampUp == -1 {
-		sessionTime := runner.EstimateSessionTime()
-		return sessionTime / time.Duration(clients)
-	}
-	return rampUp
-}
-
-func (runner *Runner) httpReq(inputData string, config *Config, command string, baseUrl string, tr *http.Transport, cookieMap map[string]*http.Cookie, sessionVars map[string]string, reqTime time.Time) (*http.Request, *http.Response, error) {
+func (runner *Runner) httpReq(inputData string, config *Config, command string, baseUrl string, cookieMap map[string]*http.Cookie, sessionVars map[string]string, reqTime time.Time) (*http.Request, *http.Response, error) {
 
 	var reqErr error
 
@@ -283,7 +342,7 @@ func (runner *Runner) httpReq(inputData string, config *Config, command string, 
 		}
 	}
 
-	resp, err := httpRoundTrip(tr, req)
+	resp, err := httpRoundTrip(runner.httpTransport, req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s %s ERROR %s: %v\n", command, inputData, time.Now(), err.Error())
 	} else if verbose {
@@ -417,9 +476,9 @@ func (runner *Runner) tcpReq(inputData string, config *Config, command string, s
 	return reply[0:responseLen]
 }
 
-func (runner *Runner) DoReq(stepCounter int, mdi string, result *Result, clientId int, baseUrl string, delay int, tr *http.Transport, cookieMap map[string]*http.Cookie, sessionVars map[string]string, stopTime time.Time, commandTime float64) string {
+func (runner *Runner) DoReq(stepCounter int, mdi string, result *Result, clientId int, baseUrl string, delay int, cookieMap map[string]*http.Cookie, sessionVars map[string]string, commandTime float64) string {
 
-	if !stopTime.IsZero() && time.Now().Add(time.Duration(delay)*time.Millisecond).After(stopTime) {
+	if !runner.stopTime.IsZero() && time.Now().Add(time.Duration(delay)*time.Millisecond).After(runner.stopTime) {
 		return ""
 	}
 	time.Sleep(time.Duration(delay) * time.Millisecond) // default value is 0 milliseconds
@@ -432,7 +491,7 @@ func (runner *Runner) DoReq(stepCounter int, mdi string, result *Result, clientI
 		shortUrl    string
 	)
 
-	command := runner.CommandQueue[stepCounter]
+	command := runner.commandQueue[stepCounter]
 	stepCounter += 1
 	session := ""
 	continueSession := true
@@ -447,10 +506,10 @@ func (runner *Runner) DoReq(stepCounter int, mdi string, result *Result, clientI
 		requestType := runner.config.FieldString("ReqType", command)
 		if requestType == "TCP" {
 			tcpReply = runner.tcpReq(mdi, runner.config, command, baseUrl, sessionVars)
-			shortUrl = (runner.baseUrlFilter).ReplaceAllString(baseUrl, "")
+			shortUrl = (runner.reUrlFilter).ReplaceAllString(baseUrl, "")
 		} else {
-			httpRequest, httpResp, httpError = runner.httpReq(mdi, runner.config, command, baseUrl, tr, cookieMap, sessionVars, startTime)
-			shortUrl = (runner.baseUrlFilter).ReplaceAllString(httpRequest.URL.String(), "")
+			httpRequest, httpResp, httpError = runner.httpReq(mdi, runner.config, command, baseUrl, cookieMap, sessionVars, startTime)
+			shortUrl = (runner.reUrlFilter).ReplaceAllString(httpRequest.URL.String(), "")
 			requestType = httpRequest.Method
 
 		}
@@ -472,12 +531,12 @@ func (runner *Runner) DoReq(stepCounter int, mdi string, result *Result, clientI
 		}
 	}
 
-	if verbose && stepCounter < len(runner.CommandQueue) {
-		fmt.Fprintf(os.Stderr, "mdi %s stepCounter %d nextCommand=%v\n", mdi, stepCounter, runner.CommandQueue[stepCounter])
+	if verbose && stepCounter < len(runner.commandQueue) {
+		fmt.Fprintf(os.Stderr, "mdi %s stepCounter %d nextCommand=%v\n", mdi, stepCounter, runner.commandQueue[stepCounter])
 	}
 
-	if continueSession && stepCounter < len(runner.CommandQueue) && runner.CommandQueue[stepCounter] != "none" {
-		session = runner.DoReq(stepCounter, mdi, result, clientId, baseUrl, delay, tr, cookieMap, sessionVars, stopTime, commandTime)
+	if continueSession && stepCounter < len(runner.commandQueue) && runner.commandQueue[stepCounter] != "none" {
+		session = runner.DoReq(stepCounter, mdi, result, clientId, baseUrl, delay, cookieMap, sessionVars, commandTime)
 	} else if len(runner.config.CommandSequence.SessionLog) > 0 {
 		fmt.Fprintf(os.Stderr, "%s\n", SessionLogMacros(mdi, sessionVars, time.Now(), runner.config.CommandSequence.SessionLog))
 	}
@@ -492,7 +551,7 @@ func (runner *Runner) printSessionSummary() {
 	} else {
 		fmt.Fprintf(os.Stderr, "Configuration:                  %s\n", configFile)
 	}
-	fmt.Fprintf(os.Stderr, "Session profile:                %d requests: %s\n", len(runner.CommandQueue), strings.Join(runner.CommandQueue, ", "))
+	fmt.Fprintf(os.Stderr, "Session profile:                %d requests: %s\n", len(runner.commandQueue), strings.Join(runner.commandQueue, ", "))
 	fmt.Fprintf(os.Stderr, "Estimated session time:         %v\n", runner.EstimateSessionTime())
 	fmt.Fprintf(os.Stderr, "Simultaneous sessions:          %d\n", clients)
 	fmt.Fprintf(os.Stderr, "API host:                       %s\n", baseUrl)
@@ -503,7 +562,7 @@ func (runner *Runner) printSessionSummary() {
 func GetResults(results map[int]*Result, overallStartTime time.Time) map[string]int32 {
 	summary := make(map[string]int32)
 	for _, result := range results {
-		summary["requests"] += result.Requests
+		summary["requests"] += result.requests
 		summary["success"] += result.success
 		summary["networkFailed"] += result.networkFailed
 		summary["badFailed"] += result.badFailed
@@ -513,8 +572,8 @@ func GetResults(results map[int]*Result, overallStartTime time.Time) map[string]
 	}
 	return summary
 }
-func (runner *Runner) ExitWithStatus(results map[int]*Result) {
-	myMap := GetResults(results, runner.startTime)
+func (runner *Runner) Exit() {
+	myMap := GetResults(runner.results, runner.startTime)
 	PrintResults(myMap, runner.startTime)
 	os.Exit(runner.exitStatus(myMap))
 }
@@ -540,7 +599,7 @@ func PrintResults(myMap map[string]int32, overallStartTime time.Time) {
 func (runner *Runner) exitStatus(myMap map[string]int32) int {
 	if myMap["success"] != myMap["requests"] {
 		return 32
-	} else if !runner.alwaysFoundSessionVars {
+	} else if !runner.foundAllSessionVars {
 		return 33
 	} else {
 		return 0
@@ -638,7 +697,7 @@ func (runner *Runner) doLog(command string, config *Config, requestMethod string
 	sessionKey = "0"
 	tcp = requestMethod == "TCP"
 
-	atomic.AddInt32(&result.Requests, 1) //atomic++
+	atomic.AddInt32(&result.requests, 1) //atomic++
 
 	// ---------------------------------------------------------------------------------------------
 	// Process TCP
@@ -652,7 +711,7 @@ func (runner *Runner) doLog(command string, config *Config, requestMethod string
 		//atomic.AddInt32(&result.badFailed, 1)
 
 		foundSessionVars, foundMustCaptures := runner.findSessionVars(command, config, fmt.Sprintf("%x", tcpResponse), inputData, startTime, sessionVars, tcp)
-		runner.alwaysFoundSessionVars = runner.alwaysFoundSessionVars && foundSessionVars
+		runner.foundAllSessionVars = runner.foundAllSessionVars && foundSessionVars
 		continueSession = continueSession && foundMustCaptures
 		goto OUTPUTLOG
 	}
@@ -673,7 +732,7 @@ func (runner *Runner) doLog(command string, config *Config, requestMethod string
 				if verbose {
 					fmt.Fprintf(os.Stderr, "cookie nameX=%v\n\n", cookie)
 				}
-				if cookie.Name == runner.SessionCookieName {
+				if cookie.Name == runner.config.Search.SessionCookieName {
 					session = cookie.Value
 					if verbose {
 						fmt.Fprintf(os.Stderr, "session=%v\n", cookie)
@@ -693,7 +752,7 @@ func (runner *Runner) doLog(command string, config *Config, requestMethod string
 
 		sessionVarsInput := strings.Replace(string(dump), "\r", "", -1)
 		foundSessionVars, foundMustCaptures = runner.findSessionVars(command, config, sessionVarsInput, inputData, startTime, sessionVars, false)
-		runner.alwaysFoundSessionVars = runner.alwaysFoundSessionVars && foundSessionVars
+		runner.foundAllSessionVars = runner.foundAllSessionVars && foundSessionVars
 		continueSession = continueSession && foundMustCaptures
 
 		if httpResponse.StatusCode >= 200 && httpResponse.StatusCode < 400 { //was300
