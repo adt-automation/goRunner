@@ -239,7 +239,6 @@ func client(tr *http.Transport, configuration *runner.CfgStruct, result *runner.
 	time.Sleep(initialDelay)
 
 	msDelay := 0
-	grep1, grep2 := "", ""
 	for id := range trafficChannel {
 		//read in the line. either a generated id or (TODO) a url
 		//		id := <-trafficChannel //urlTemplate : 100|10000|about
@@ -248,7 +247,7 @@ func client(tr *http.Transport, configuration *runner.CfgStruct, result *runner.
 		// cookieMap and sessionVars should start fresh every time we start a DoReq session
 		var cookieMap = make(map[string]*http.Cookie)
 		var sessionVars = make(map[string]string)
-		runner.DoReq(0, id, configuration, result, clientId, baseUrl, baseUrlFilter, msDelay, tr, cookieMap, sessionVars, grep1, grep2, stopTime, 0.0) //val,resp, err
+		runner.DoReq(0, id, configuration, result, clientId, baseUrl, baseUrlFilter, msDelay, tr, cookieMap, sessionVars, stopTime, 0.0) //val,resp, err
 		msDelay = runner.PostSessionDelay
 	}
 	if time.Now().Before(stopTime) {

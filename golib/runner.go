@@ -167,7 +167,7 @@ func PrintLogHeader(inputLine1 string, isInputHeader bool) {
 		}
 	}
 	stdoutMutex.Lock()
-	fmt.Printf("startTime%ccommand%cnextCommand%cstep%crequestType%csessionKey%csession%cgrep1%cgrep2%cid%cshortUrl%cstatusCode%csessionVarsOk%cclientId%cbyteSize%cserver%cduration%cserverDuration%cbuildId%s\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, inputLine1)
+	fmt.Printf("startTime%ccommand%cnextCommand%cstep%crequestType%csessionKey%csession%cid%cshortUrl%cstatusCode%csessionVarsOk%cclientId%cbyteSize%cserver%cduration%cserverDuration%cbuildId%s\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, inputLine1)
 	stdoutMutex.Unlock()
 	if len(cfg.CommandSequence.SessionLog) > 0 {
 		fmt.Fprintf(os.Stderr, "%s\n", strings.Replace(strings.Replace(strings.Replace(cfg.CommandSequence.SessionLog, "{%", "", -1), "{$", "", -1), "}", "", -1))
@@ -259,7 +259,7 @@ func initRunnerMacros(cfg *CfgStruct) {
 	rmac.InitUnixtimeMacros()
 }
 
-func httpReq(inputData string, config *CfgStruct, command string, baseUrl string, tr *http.Transport, cookieMap map[string]*http.Cookie, sessionVars map[string]string, grep1 string, grep2 string, reqTime time.Time) (*http.Request, *http.Response, error) {
+func httpReq(inputData string, config *CfgStruct, command string, baseUrl string, tr *http.Transport, cookieMap map[string]*http.Cookie, sessionVars map[string]string, reqTime time.Time) (*http.Request, *http.Response, error) {
 
 	var reqErr error
 
@@ -275,16 +275,12 @@ func httpReq(inputData string, config *CfgStruct, command string, baseUrl string
 		r = strings.NewReplacer(
 			"{%KEY}", key,
 			"{%VAL}", val,
-			"{%1}", grep1,
-			"{%2}", grep2,
 		)
 	} else {
 		key = inputData //no delimeter in the input, so we take the whole line as the key
 		//and here for new config substitutions
 		r = strings.NewReplacer(
 			"{%KEY}", key,
-			"{%1}", grep1,
-			"{%2}", grep2,
 		)
 	}
 
@@ -589,7 +585,7 @@ func tcpReq(inputData string, config *CfgStruct, command string, servAddr string
 	return reply[0:responseLen]
 }
 
-func DoReq(stepCounter int, mdi string, config *CfgStruct, result *Result, clientId int, baseUrl string, baseUrlFilter *regexp.Regexp, delay int, tr *http.Transport, cookieMap map[string]*http.Cookie, sessionVars map[string]string, grep1 string, grep2 string, stopTime time.Time, commandTime float64) (lastSession string) {
+func DoReq(stepCounter int, mdi string, config *CfgStruct, result *Result, clientId int, baseUrl string, baseUrlFilter *regexp.Regexp, delay int, tr *http.Transport, cookieMap map[string]*http.Cookie, sessionVars map[string]string, stopTime time.Time, commandTime float64) (lastSession string) {
 
 	if !stopTime.IsZero() && time.Now().Add(time.Duration(delay)*time.Millisecond).After(stopTime) {
 		lastSession = ""
@@ -614,9 +610,9 @@ func DoReq(stepCounter int, mdi string, config *CfgStruct, result *Result, clien
 			shortUrl := (baseUrlFilter).ReplaceAllString(baseUrl, "")
 			continueSession = doLogTcp(command, config, tcpReply, result, startTime, shortUrl, mdi, clientId, stepCounter, "", sessionVars)
 		} else {
-			req, resp, err := httpReq(mdi, config, command, baseUrl, tr, cookieMap, sessionVars, grep1, grep2, startTime)
+			req, resp, err := httpReq(mdi, config, command, baseUrl, tr, cookieMap, sessionVars, startTime)
 			shortUrl := (baseUrlFilter).ReplaceAllString(req.URL.String(), "")
-			session, _, grep1, grep2, continueSession = doLog(command, config, req.Method, resp, result, err, startTime, shortUrl, mdi, clientId, stepCounter, "", sessionVars)
+			session, _, continueSession = doLog(command, config, req.Method, resp, result, err, startTime, shortUrl, mdi, clientId, stepCounter, "", sessionVars)
 			if resp != nil && resp.Body != nil {
 				resp.Body.Close()
 			}
@@ -640,7 +636,7 @@ func DoReq(stepCounter int, mdi string, config *CfgStruct, result *Result, clien
 	}
 
 	if continueSession && stepCounter < len(CommandQueue) && CommandQueue[stepCounter] != "none" {
-		session = DoReq(stepCounter, mdi, config, result, clientId, baseUrl, baseUrlFilter, delay, tr, cookieMap, sessionVars, grep1, grep2, stopTime, commandTime)
+		session = DoReq(stepCounter, mdi, config, result, clientId, baseUrl, baseUrlFilter, delay, tr, cookieMap, sessionVars, stopTime, commandTime)
 	} else if len(cfg.CommandSequence.SessionLog) > 0 {
 		fmt.Fprintf(os.Stderr, "%s\n", rmac.SessionLogMacros(mdi, sessionVars, time.Now(), cfg.CommandSequence.SessionLog))
 	}
@@ -757,8 +753,6 @@ func doLogTcp(command string, config *CfgStruct, dump []byte, result *Result, st
 	var byteSize int = len(dump)
 	var server string = ""
 	var serverTime float64 = 0.0
-	var grep1 string = ""
-	var grep2 string = ""
 	var duration float64 = (time.Since(startTime)).Seconds()
 	var hexDump string = fmt.Sprintf("%x", dump)
 	var inputVals = ""
@@ -787,12 +781,12 @@ func doLogTcp(command string, config *CfgStruct, dump []byte, result *Result, st
 	d := Delimeter[0]
 	const layout = "2006-01-02 15:04:05.000"
 	stdoutMutex.Lock()
-	fmt.Printf("%v%c%s%c%s%c%d%c%s%c%s%c%s%c%s%c%s%c%s%c%s%c%d%c%v%c%d%c%d%c%v%c%.3f%c%.3f%c%s%s\n", startTime.Format(layout), d, command, d, nextCommand, d, stepCounter, d, requestType, d, sessionKey, d, session, d, string(grep1), d, string(grep2), d, mdi, d, shortUrl, d, statusCode, d, true, d, clientId, d, byteSize, d, server, d, duration, d, serverTime, d, Build, inputVals)
+	fmt.Printf("%v%c%s%c%s%c%d%c%s%c%s%c%s%c%s%c%s%c%d%c%v%c%d%c%d%c%v%c%.3f%c%.3f%c%s%s\n", startTime.Format(layout), d, command, d, nextCommand, d, stepCounter, d, requestType, d, sessionKey, d, session, d, mdi, d, shortUrl, d, statusCode, d, foundSessionVars, d, clientId, d, byteSize, d, server, d, duration, d, serverTime, d, Build, inputVals)
 	stdoutMutex.Unlock()
 	return foundMustCaptures
 }
 
-func doLog(command string, config *CfgStruct, requestType string, resp *http.Response, result *Result, err error, startTime time.Time, shortUrl string, mdi string, clientId int, stepCounter int, lastSession string, sessionVars map[string]string) (session string, nextCommand string, grep1 string, grep2 string, continueSession bool) {
+func doLog(command string, config *CfgStruct, requestType string, resp *http.Response, result *Result, err error, startTime time.Time, shortUrl string, mdi string, clientId int, stepCounter int, lastSession string, sessionVars map[string]string) (session string, nextCommand string, continueSession bool) {
 
 	atomic.AddInt32(&result.Requests, 1) //atomic++
 	byteSize := 0
@@ -928,7 +922,7 @@ func doLog(command string, config *CfgStruct, requestType string, resp *http.Res
 		if len(sessionVars) > 0 {
 			fmt.Fprintf(os.Stderr, "ERROR: SessionVars \"%s\" from command \"%s\" were not matched in bad/empty/undelivered response (client %d, input \"%s\")\n",
 				strings.Join(sessionVars, ","), command, clientId, mdi)
-			// foundSessionVars = false
+			foundSessionVars = false
 		}
 		var mustCapture = getFieldString(config, "MustCapture", command)
 		if len(mustCapture) > 0 {
@@ -949,7 +943,7 @@ func doLog(command string, config *CfgStruct, requestType string, resp *http.Res
 	}
 	d := Delimeter[0]
 	stdoutMutex.Lock()
-	fmt.Printf("%v%c%s%c%s%c%d%c%s%c%s%c%s%c%s%c%s%c%s%c%s%c%d%c%v%c%d%c%d%c%v%c%.3f%c%.3f%c%s%s\n", startTime.Format(layout), d, command, d, nextCommand, d, stepCounter, d, requestType, d, sessionKey, d, session, d, string(grep1), d, string(grep2), d, mdi, d, shortUrl, d, statusCode, d, foundSessionVars, d, clientId, d, byteSize, d, server, d, duration, d, serverTime, d, Build, inputVals)
+	fmt.Printf("%v%c%s%c%s%c%d%c%s%c%s%c%s%c%s%c%s%c%d%c%v%c%d%c%d%c%v%c%.3f%c%.3f%c%s%s\n", startTime.Format(layout), d, command, d, nextCommand, d, stepCounter, d, requestType, d, sessionKey, d, session, d, mdi, d, shortUrl, d, statusCode, d, foundSessionVars, d, clientId, d, byteSize, d, server, d, duration, d, serverTime, d, Build, inputVals)
 	stdoutMutex.Unlock()
 	//	if debug {
 	//		fmt.Fprintf(os.Stderr, "BODY [%.3f\t[%v]\t%d]\n\n", startTimeStamp, body, len(body))
