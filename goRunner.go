@@ -33,7 +33,6 @@ var (
 	baseUrl     string
 	configFile  string
 	inputFile   string
-	inputFile1  string
 	delimeter   string
 	headerExit  bool
 	headerRow   bool
@@ -56,7 +55,6 @@ func init() {
 	flag.BoolVar(&dump, "dump", false, "Show the HTTP dump for the api call")
 	flag.StringVar(&configFile, "configFile", "config.ini", "Config file location")
 	flag.StringVar(&delimeter, "d", ",", "Output file delimeter")
-	flag.BoolVar(&headerExit, "hx", false, "Print output header row and exit")
 	flag.BoolVar(&headerRow, "header", true, "Output header row. Default to true.")
 	flag.DurationVar(&readTimeout, "readtimeout", time.Duration(30)*time.Second, "Timeout in seconds for the target API to send the first response byte. Default 30 seconds")
 	flag.StringVar(&cpuProfile, "cpuprofile", "", "write cpu profile to file")
@@ -71,6 +69,14 @@ var Build string
 func init() {
 	if Build == "" {
 		Build = "unset"
+	}
+
+	defaultUsage := flag.Usage
+
+	flag.Usage = func() {
+		defaultUsage()
+		fmt.Fprintf(os.Stderr, "\n\n")
+		PrintLogHeader(delimeter)
 	}
 }
 
@@ -142,18 +148,19 @@ func main() {
 
 	_ = scanner.Scan()
 	if headerRow {
-		runner.PrintLogHeader()
-		if headerExit {
-			os.Exit(0)
-		}
-	}
-	if len(inputFile1) > 0 && HasInputColHeaders() == false {
-		// name our column headers
-		HeadInputColumns(scanner.Text())
+		PrintLogHeader(delimeter)
+		runner.PrintSessionLog()
 	} else {
-		// anonymous column headers, put work into the channel instead
 		trafficChannel <- scanner.Text()
 	}
+
+	// if len(inputFile1) > 0 && HasInputColHeaders() == false {
+	// 	// name our column headers
+	// 	HeadInputColumns(scanner.Text())
+	// } else {
+	// 	// anonymous column headers, put work into the channel instead
+	// 	trafficChannel <- scanner.Text()
+	// }
 
 	for scanner.Scan() {
 		trafficChannel <- scanner.Text() //put work into the channel from Stdin

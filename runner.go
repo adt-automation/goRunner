@@ -161,17 +161,18 @@ func (runner *Runner) client(result *Result, trafficChannel chan string, clientI
 	}
 }
 
-func (runner *Runner) PrintLogHeader() {
-	d := delimeter[0]
-
-	runner.stdoutMutex.Lock()
-	fmt.Printf("startTime%ccommand%cstep%crequestType%csessionKey%csession%cid%cshortUrl%cstatusCode%csessionVarsOk%cclientId%cbyteSize%cserver%cduration%cserverDuration%cbuildId%cinputLine\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d)
-	runner.stdoutMutex.Unlock()
-
+func (runner *Runner) PrintSessionLog() {
 	// what is this doing here ?
 	if len(runner.config.CommandSequence.SessionLog) > 0 {
 		fmt.Fprintf(os.Stderr, "%s\n", strings.Replace(strings.Replace(strings.Replace(runner.config.CommandSequence.SessionLog, "{%", "", -1), "{$", "", -1), "}", "", -1))
 	}
+}
+
+func PrintLogHeader(delimiter string) {
+	d := delimeter[0]
+	// runner.stdoutMutex.Lock()
+	fmt.Printf("startTime%ccommand%cstep%crequestType%csessionKey%csession%cid%cshortUrl%cstatusCode%csessionVarsOk%cclientId%cbyteSize%cserver%cduration%cserverDuration%cbuildId%cinputLine\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d)
+	// runner.stdoutMutex.Unlock()
 }
 
 func (runner *Runner) EstimateSessionTime() time.Duration {

@@ -26,6 +26,7 @@ var CommandMacros = make(map[string][]string)
 var Md5Macros = make(map[string][]string)
 var Base64Macros = make(map[string][]string)
 var KvDelimeter = ","
+
 var inputColHeaders = make(map[string]int)
 var csvrx = regexp.MustCompile("{%CSV\\[(\\d+)\\]}")
 
