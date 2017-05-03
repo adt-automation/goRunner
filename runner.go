@@ -161,28 +161,14 @@ func (runner *Runner) client(result *Result, trafficChannel chan string, clientI
 	}
 }
 
-func (runner *Runner) PrintLogHeader(inputLine1 string, isInputHeader bool) {
+func (runner *Runner) PrintLogHeader() {
 	d := delimeter[0]
-	if strings.Index(inputLine1, ",") == -1 {
-		inputLine1 = ""
-	} else {
-		inputLine1 = inputLine1[strings.Index(inputLine1, ",")+1:] // skip past first comma
-		if isInputHeader {
-			inputLine1 = "," + inputLine1 // put the initial comma back onto the string
-		} else {
-			vals := make([]string, 0)
-			for i, _ := range strings.Split(inputLine1, ",") { // substitute "value0", etc, since this is not a column header
-				vals = append(vals, fmt.Sprintf(",value%d", i))
-			}
-			inputLine1 = strings.Join(vals, ",")
-		}
-		if d != ',' {
-			inputLine1 = strings.Replace(inputLine1, ",", delimeter[0:1], -1)
-		}
-	}
+
 	runner.stdoutMutex.Lock()
-	fmt.Printf("startTime%ccommand%cstep%crequestType%csessionKey%csession%cid%cshortUrl%cstatusCode%csessionVarsOk%cclientId%cbyteSize%cserver%cduration%cserverDuration%cbuildId%s\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, inputLine1)
+	fmt.Printf("startTime%ccommand%cstep%crequestType%csessionKey%csession%cid%cshortUrl%cstatusCode%csessionVarsOk%cclientId%cbyteSize%cserver%cduration%cserverDuration%cbuildId%cinputLine\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d)
 	runner.stdoutMutex.Unlock()
+
+	// what is this doing here ?
 	if len(runner.config.CommandSequence.SessionLog) > 0 {
 		fmt.Fprintf(os.Stderr, "%s\n", strings.Replace(strings.Replace(strings.Replace(runner.config.CommandSequence.SessionLog, "{%", "", -1), "{$", "", -1), "}", "", -1))
 	}

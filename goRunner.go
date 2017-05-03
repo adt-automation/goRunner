@@ -36,7 +36,7 @@ var (
 	inputFile1  string
 	delimeter   string
 	headerExit  bool
-	noHeader    bool
+	headerRow   bool
 	cpuProfile  string
 	verbose     bool
 	keepAlive   bool
@@ -49,7 +49,6 @@ func init() {
 	flag.IntVar(&clients, "c", 100, "Number of concurrent clients to launch.")
 	flag.DurationVar(&testTimeout, "t", 0, "Time in seconds for a timed load test")
 	flag.StringVar(&inputFile, "f", "", "Read input from file rather than stdin")
-	flag.StringVar(&inputFile1, "fh", "", "Read input from csv file which has a header row")
 	flag.DurationVar(&rampUp, "rampUp", -1, "Specify ramp up delay as duration (1m2s, 300ms, 0 ..). Default will auto compute from client sessions.")
 	flag.Float64Var(&targetTPS, "targetTPS", 1000000, "The default max TPS is set to 1 million. Good luck reaching this :p")
 	flag.StringVar(&baseUrl, "baseUrl", "", "The host to test. Example https://test2.someserver.org")
@@ -58,7 +57,7 @@ func init() {
 	flag.StringVar(&configFile, "configFile", "config.ini", "Config file location")
 	flag.StringVar(&delimeter, "d", ",", "Output file delimeter")
 	flag.BoolVar(&headerExit, "hx", false, "Print output header row and exit")
-	flag.BoolVar(&noHeader, "nh", false, "Suppress output header row. Ignored if hx is set")
+	flag.BoolVar(&headerRow, "header", true, "Output header row. Default to true.")
 	flag.DurationVar(&readTimeout, "readtimeout", time.Duration(30)*time.Second, "Timeout in seconds for the target API to send the first response byte. Default 30 seconds")
 	flag.StringVar(&cpuProfile, "cpuprofile", "", "write cpu profile to file")
 	flag.BoolVar(&verbose, "verbose", false, "verbose debugging output flag")
@@ -96,14 +95,6 @@ func main() {
 	}
 	if !headerExit && baseUrl == "" {
 		flagError("Please provide the baseUrl")
-	}
-
-	if len(inputFile1) > 0 {
-		if len(inputFile) > 0 {
-			flagError("don't use -f and -fh together")
-		} else {
-			inputFile = inputFile1
-		}
 	}
 
 	if os.Getenv("GOMAXPROCS") == "" {
@@ -150,8 +141,8 @@ func main() {
 	}
 
 	_ = scanner.Scan()
-	if !noHeader {
-		runner.PrintLogHeader(scanner.Text(), len(inputFile1) > 0)
+	if headerRow {
+		runner.PrintLogHeader()
 		if headerExit {
 			os.Exit(0)
 		}
