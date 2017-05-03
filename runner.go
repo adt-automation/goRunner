@@ -528,19 +528,23 @@ func DoReq(stepCounter int, mdi string, config *CfgStruct, result *Result, clien
 	} else {
 		startTime := time.Now()
 		requestType := getFieldString(config, "ReqType", command)
+		var tcpReply []byte
+		var httpResp *http.Response
+		var httpError error
+		var httpRequest *http.Request
+		var shortUrl string
 
 		if requestType == "TCP" {
-			tcpReply := tcpReq(mdi, config, command, baseUrl, sessionVars)
-			shortUrl := (baseUrlFilter).ReplaceAllString(baseUrl, "")
-			session, continueSession = doLog(command, config, requestType, tcpReply, nil, result, nil, startTime, shortUrl, mdi, clientId, stepCounter, "", sessionVars)
+			tcpReply = tcpReq(mdi, config, command, baseUrl, sessionVars)
+			shortUrl = (baseUrlFilter).ReplaceAllString(baseUrl, "")
 		} else {
-			req, resp, err := httpReq(mdi, config, command, baseUrl, tr, cookieMap, sessionVars, startTime)
-			shortUrl := (baseUrlFilter).ReplaceAllString(req.URL.String(), "")
-			session, continueSession = doLog(command, config, req.Method, []byte{}, resp, result, err, startTime, shortUrl, mdi, clientId, stepCounter, "", sessionVars)
-			if resp != nil && resp.Body != nil {
-				resp.Body.Close()
-			}
+			httpRequest, httpResp, httpError = httpReq(mdi, config, command, baseUrl, tr, cookieMap, sessionVars, startTime)
+			shortUrl = (baseUrlFilter).ReplaceAllString(httpRequest.URL.String(), "")
+			requestType = httpRequest.Method
+
 		}
+		// doLog
+		session, continueSession = doLog(command, config, requestType, tcpReply, httpResp, result, httpError, startTime, shortUrl, mdi, clientId, stepCounter, "", sessionVars)
 
 		delay = getFieldInteger(config, "MsecDelay", command)
 
@@ -783,6 +787,9 @@ func doLog(command string, config *CfgStruct, requestMethod string, tcpResponse 
 				serverTime = 10 //just a big number (in seconds) so we notice if it was missing
 			} else {
 				serverTime = serverTime / 1000
+			}
+			if httpResponse.Body != nil {
+				httpResponse.Body.Close()
 			}
 		} else {
 			atomic.AddInt32(&result.networkFailed, 1) //atomic++
