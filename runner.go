@@ -39,12 +39,17 @@ type Runner struct {
 	alwaysFoundSessionVars bool
 	PostSessionDelay       int
 	GrepCommand            *regexp.Regexp
+	startTime              time.Time
+	baseUrlFilter          *regexp.Regexp
 }
 
-func NewRunner(config *Config) *Runner {
-	toReturn := &Runner{config: config, alwaysFoundSessionVars: true}
+func NewRunner(configFile string) *Runner {
+	toReturn := &Runner{alwaysFoundSessionVars: true, startTime: time.Now()}
+	config := NewConfig(configFile)
+	toReturn.config = config
 	toReturn.GrepCommand = regexp.MustCompile(config.Search.CommandGrep)
 	toReturn.SessionCookieName = config.Search.SessionCookieName
+	toReturn.baseUrlFilter = regexp.MustCompile(baseUrl)
 
 	// ---------------------------------------------------------------------------------------------
 	// Init command queue
@@ -131,12 +136,11 @@ func (runner *Runner) EstimateSessionTime() time.Duration {
 }
 
 func (runner *Runner) RampUpDelay() time.Duration {
-	if clients == 0 {
-		return time.Duration(0)
-	} else {
-		dur := runner.EstimateSessionTime()
-		return dur / time.Duration(clients)
+	if rampUp == -1 {
+		sessionTime := runner.EstimateSessionTime()
+		return sessionTime / time.Duration(clients)
 	}
+	return rampUp
 }
 
 func (runner *Runner) httpReq(inputData string, config *Config, command string, baseUrl string, tr *http.Transport, cookieMap map[string]*http.Cookie, sessionVars map[string]string, reqTime time.Time) (*http.Request, *http.Response, error) {
@@ -413,7 +417,7 @@ func (runner *Runner) tcpReq(inputData string, config *Config, command string, s
 	return reply[0:responseLen]
 }
 
-func (runner *Runner) DoReq(stepCounter int, mdi string, result *Result, clientId int, baseUrl string, baseUrlFilter *regexp.Regexp, delay int, tr *http.Transport, cookieMap map[string]*http.Cookie, sessionVars map[string]string, stopTime time.Time, commandTime float64) string {
+func (runner *Runner) DoReq(stepCounter int, mdi string, result *Result, clientId int, baseUrl string, delay int, tr *http.Transport, cookieMap map[string]*http.Cookie, sessionVars map[string]string, stopTime time.Time, commandTime float64) string {
 
 	if !stopTime.IsZero() && time.Now().Add(time.Duration(delay)*time.Millisecond).After(stopTime) {
 		return ""
@@ -443,10 +447,10 @@ func (runner *Runner) DoReq(stepCounter int, mdi string, result *Result, clientI
 		requestType := runner.config.FieldString("ReqType", command)
 		if requestType == "TCP" {
 			tcpReply = runner.tcpReq(mdi, runner.config, command, baseUrl, sessionVars)
-			shortUrl = (baseUrlFilter).ReplaceAllString(baseUrl, "")
+			shortUrl = (runner.baseUrlFilter).ReplaceAllString(baseUrl, "")
 		} else {
 			httpRequest, httpResp, httpError = runner.httpReq(mdi, runner.config, command, baseUrl, tr, cookieMap, sessionVars, startTime)
-			shortUrl = (baseUrlFilter).ReplaceAllString(httpRequest.URL.String(), "")
+			shortUrl = (runner.baseUrlFilter).ReplaceAllString(httpRequest.URL.String(), "")
 			requestType = httpRequest.Method
 
 		}
@@ -473,7 +477,7 @@ func (runner *Runner) DoReq(stepCounter int, mdi string, result *Result, clientI
 	}
 
 	if continueSession && stepCounter < len(runner.CommandQueue) && runner.CommandQueue[stepCounter] != "none" {
-		session = runner.DoReq(stepCounter, mdi, result, clientId, baseUrl, baseUrlFilter, delay, tr, cookieMap, sessionVars, stopTime, commandTime)
+		session = runner.DoReq(stepCounter, mdi, result, clientId, baseUrl, delay, tr, cookieMap, sessionVars, stopTime, commandTime)
 	} else if len(runner.config.CommandSequence.SessionLog) > 0 {
 		fmt.Fprintf(os.Stderr, "%s\n", SessionLogMacros(mdi, sessionVars, time.Now(), runner.config.CommandSequence.SessionLog))
 	}
@@ -509,9 +513,9 @@ func GetResults(results map[int]*Result, overallStartTime time.Time) map[string]
 	}
 	return summary
 }
-func (runner *Runner) ExitWithStatus(results map[int]*Result, overallStartTime time.Time) {
-	myMap := GetResults(results, overallStartTime)
-	PrintResults(myMap, overallStartTime)
+func (runner *Runner) ExitWithStatus(results map[int]*Result) {
+	myMap := GetResults(results, runner.startTime)
+	PrintResults(myMap, runner.startTime)
 	os.Exit(runner.exitStatus(myMap))
 }
 
