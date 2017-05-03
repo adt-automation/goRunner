@@ -31,7 +31,9 @@ import (
 	runner "github.com/adt-automation/goRunner/golib"
 )
 
-var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+var (
+	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+)
 
 var (
 	clients        int
