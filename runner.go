@@ -163,10 +163,14 @@ func (runner *Runner) PrintSessionLog() {
 	}
 }
 
-func PrintLogHeader(delimiter string) {
-	d := outputDelimeter[0]
+func PrintLogHeader(delimiter string, nbArgs int) {
+	d := delimeter[0]
 	// runner.stdoutMutex.Lock()
-	fmt.Printf("startTime%ccommand%cstep%crequestType%csessionKey%csession%cid%cshortUrl%cstatusCode%csessionVarsOk%cclientId%cbyteSize%cserver%cduration%cserverDuration%cbuildId\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d)
+	var argsHeader string
+	for i := 0; i < nbArgs; i++ {
+		argsHeader += delimeter + "arg" + strconv.Itoa(i)
+	}
+	fmt.Printf("startTime%ccommand%cstep%crequestType%csessionKey%csession%cid%cshortUrl%cstatusCode%csessionVarsOk%cclientId%cbyteSize%cserver%cduration%cserverDuration%cbuildId%s\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, argsHeader)
 	// runner.stdoutMutex.Unlock()
 }
 
@@ -754,10 +758,17 @@ func (runner *Runner) doLog(command string, config *Config, requestMethod string
 OUTPUTLOG:
 	const layout = "2006-01-02 15:04:05.000"
 
-	d := outputDelimeter[0]
+	d := delimeter[0]
+
+	// get input values string splited
+	inputSplit := strings.Split(inputLine, delimeter)
+	var inputLog string
+	for i := 0; i < len(inputSplit); i++ {
+		inputLog += delimeter + inputSplit[i]
+	}
 
 	runner.stdoutMutex.Lock()
-	fmt.Printf("%v%c%s%c%d%c%s%c%s%c%s%c%s%c%s%c%d%c%v%c%d%c%d%c%v%c%.3f%c%.3f%c%s\n", startTime.Format(layout), d, command, d, stepCounter, d, requestMethod, d, sessionKey, d, session, d, inputLine, d, shortUrl, d, statusCode, d, foundSessionVars, d, clientId, d, byteSize, d, server, d, duration, d, serverTime, d, Build)
+	fmt.Printf("%v%c%s%c%d%c%s%c%s%c%s%c%s%c%s%c%d%c%v%c%d%c%d%c%v%c%.3f%c%.3f%c%s%s\n", startTime.Format(layout), d, command, d, stepCounter, d, requestMethod, d, sessionKey, d, session, d, inputSplit[0], d, shortUrl, d, statusCode, d, foundSessionVars, d, clientId, d, byteSize, d, server, d, duration, d, serverTime, d, Build, inputLog)
 	runner.stdoutMutex.Unlock()
 
 	return session, continueSession

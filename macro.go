@@ -247,7 +247,7 @@ func _runnerMacro(command string, declaration string, inputData string, sessionV
 		argsIndex := reArgs.FindStringSubmatch(declaration) // regexp.MustCompile("{%ARGS\\[(\\d+)\\]}")
 		if len(argsIndex) > 0 {
 			i, _ := strconv.Atoi(argsIndex[1])
-			arr := strings.Split(inputData, inputDelimeter)
+			arr := strings.Split(inputData, delimeter)
 			if i >= len(arr) {
 				// TODO : print error ?
 				return ""
