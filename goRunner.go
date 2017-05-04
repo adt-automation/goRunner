@@ -27,15 +27,13 @@ import (
 // Flags
 var (
 	clients     int
-	debug       bool
-	dump        bool
 	targetTPS   float64
 	baseUrl     string
 	configFile  string
 	inputFile   string
 	delimeter   string
 	headerExit  bool
-	headerRow   bool
+	noHeader    bool
 	cpuProfile  string
 	verbose     bool
 	keepAlive   bool
@@ -46,18 +44,16 @@ var (
 
 func init() {
 	flag.IntVar(&clients, "c", 100, "Number of concurrent clients to launch.")
-	flag.DurationVar(&testTimeout, "t", 0, "Time in seconds for a timed load test")
+	flag.DurationVar(&testTimeout, "t", 0, "Timed load test duration (1m23s, 240s, ..). Defaults no timeout.")
 	flag.StringVar(&inputFile, "f", "", "Read input from file rather than stdin")
 	flag.DurationVar(&rampUp, "rampUp", -1, "Specify ramp up delay as duration (1m2s, 300ms, 0 ..). Default will auto compute from client sessions.")
 	flag.Float64Var(&targetTPS, "targetTPS", 1000000, "The default max TPS is set to 1 million. Good luck reaching this :p")
 	flag.StringVar(&baseUrl, "baseUrl", "", "The host to test. Example https://test2.someserver.org")
-	flag.BoolVar(&debug, "debug", false, "Show the body returned for the api call")
-	flag.BoolVar(&dump, "dump", false, "Show the HTTP dump for the api call")
 	flag.StringVar(&configFile, "configFile", "config.ini", "Config file location")
 	flag.StringVar(&delimeter, "d", ",", "Output file delimeter")
 	flag.BoolVar(&headerExit, "hx", false, "Print output header row and exit")
-	flag.BoolVar(&headerRow, "header", true, "Output header row. Default to true.")
-	flag.DurationVar(&readTimeout, "readtimeout", time.Duration(30)*time.Second, "Timeout in seconds for the target API to send the first response byte. Default 30 seconds")
+	flag.BoolVar(&noHeader, "nh", false, "Don't output header row. Default to false.")
+	flag.DurationVar(&readTimeout, "readtimeout", time.Duration(30)*time.Second, "Timeout duration for the target API to send the first response byte. Default 30s")
 	flag.StringVar(&cpuProfile, "cpuprofile", "", "write cpu profile to file")
 	flag.BoolVar(&verbose, "verbose", false, "verbose debugging output flag")
 	flag.BoolVar(&keepAlive, "keepalive", true, "enable/disable keepalive")
@@ -131,6 +127,13 @@ func main() {
 	}()
 
 	// ---------------------------------------------------------------------------------------------
+	// Output log headers
+	if !noHeader {
+		PrintLogHeader(delimeter)
+		runner.PrintSessionLog() // ???
+	}
+
+	// ---------------------------------------------------------------------------------------------
 	// Start clients
 	if !headerExit {
 		runner.printSessionSummary()
@@ -145,19 +148,10 @@ func main() {
 	if len(inputFile) > 0 {
 		file, err := os.Open(inputFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err.Error())
-			os.Exit(1)
+			flagError(err.Error())
 		}
 		defer file.Close()
 		scanner = bufio.NewScanner(file)
-	}
-
-	_ = scanner.Scan()
-	if headerRow {
-		PrintLogHeader(delimeter)
-		runner.PrintSessionLog()
-	} else {
-		trafficChannel <- scanner.Text()
 	}
 
 	for scanner.Scan() {
@@ -172,8 +166,8 @@ func main() {
 }
 
 func flagError(err string) {
-	fmt.Fprintf(os.Stderr, "\n%s\n\n", err)
 	flag.Usage()
+	fmt.Fprintf(os.Stderr, "\n%s\n\n", err)
 	os.Exit(1)
 }
 

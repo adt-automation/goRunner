@@ -33,20 +33,18 @@ type Result struct {
 }
 
 type Runner struct {
-	config       *Config
-	results      map[int]*Result
-	commandQueue []string
-
+	config              *Config
+	results             map[int]*Result
+	commandQueue        []string
 	foundAllSessionVars bool
 	postSessionDelay    int
 	startTime           time.Time
 	stopTime            time.Time
 	rampUpDelay         time.Duration
-
-	wgClients     sync.WaitGroup
-	httpTransport *http.Transport
-	reUrlFilter   *regexp.Regexp
-	stdoutMutex   sync.Mutex
+	wgClients           sync.WaitGroup
+	httpTransport       *http.Transport
+	reUrlFilter         *regexp.Regexp
+	stdoutMutex         sync.Mutex
 }
 
 func NewRunner(configFile string) *Runner {
@@ -137,7 +135,6 @@ func (runner *Runner) StartClients(trafficChannel chan string) {
 }
 
 //one client per -c=thread
-
 func (runner *Runner) client(result *Result, trafficChannel chan string, clientId int, initialDelay time.Duration) {
 	defer runner.wgClients.Done()
 	// strangely, this sleep cannot be moved outside the client function
@@ -171,7 +168,7 @@ func (runner *Runner) PrintSessionLog() {
 func PrintLogHeader(delimiter string) {
 	d := delimeter[0]
 	// runner.stdoutMutex.Lock()
-	fmt.Printf("startTime%ccommand%cstep%crequestType%csessionKey%csession%cid%cshortUrl%cstatusCode%csessionVarsOk%cclientId%cbyteSize%cserver%cduration%cserverDuration%cbuildId%cinputLine\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d)
+	fmt.Printf("startTime%ccommand%cstep%crequestType%csessionKey%csession%cid%cshortUrl%cstatusCode%csessionVarsOk%cclientId%cbyteSize%cserver%cduration%cserverDuration%cbuildId%cinputLine\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d)
 	// runner.stdoutMutex.Unlock()
 }
 

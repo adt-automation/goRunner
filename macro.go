@@ -25,7 +25,6 @@ var PrintTimeMacros map[string]UnixtimeMacro
 var CommandMacros = make(map[string][]string)
 var Md5Macros = make(map[string][]string)
 var Base64Macros = make(map[string][]string)
-var KvDelimeter = ","
 
 var csvrx = regexp.MustCompile("{%CSV\\[(\\d+)\\]}")
 
@@ -238,10 +237,10 @@ func _runnerMacro(command string, declaration string, inputData string, sessionV
 	} else if ok1 {
 		return reqTime.Add(prt.duration).Format(prt.format)
 	} else if declaration == "{%KEY}" {
-		arr := strings.Split(inputData, KvDelimeter)
+		arr := strings.Split(inputData, delimeter)
 		return arr[0]
 	} else if declaration == "{%VAL}" {
-		arr := strings.Split(inputData, KvDelimeter)
+		arr := strings.Split(inputData, delimeter)
 		if len(arr) > 1 {
 			return arr[1]
 		} else {
@@ -272,7 +271,7 @@ func _runnerMacro(command string, declaration string, inputData string, sessionV
 			i = inputColumnIndex(declaration)
 		}
 		if i >= 0 {
-			arr := strings.Split(inputData, KvDelimeter)
+			arr := strings.Split(inputData, delimeter)
 			return arr[i]
 		} else if declaration[1] == '%' {
 			session_var := declaration[2 : len(declaration)-1]
