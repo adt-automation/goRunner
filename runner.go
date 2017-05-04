@@ -186,37 +186,13 @@ func (runner *Runner) EstimateSessionTime() time.Duration {
 
 func (runner *Runner) httpReq(inputLine string, config *Config, command string, baseUrl string, cookieMap map[string]*http.Cookie, sessionVars map[string]string, reqTime time.Time) (*http.Request, *http.Response, error) {
 
-	var reqErr error
-
 	//this is where all the good stuff happens
 	//"DEVICE_INFORMATION", "RING", "SET_ADMIN", "MESSAGE", "INSTALL_MDM", "InstallProfile", "TENANT_INFO", ...
-	// arr := strings.Split(inputLine, inputDelimeter) // for 2 value inputs to stdin
-	// var key, val,
-	var body, urlx string
-	// var r *strings.Replacer
-	// if len(arr) > 1 {
-	// 	key = arr[0]
-	// 	val = arr[1] //need to check if this exists, it will only be in the input line for APIs that req. 2 inputs
-	// 	//add here if you need to add new config substitutions
-	// 	r = strings.NewReplacer(
-	// 		"{%KEY}", key,
-	// 		"{%VAL}", val,
-	// 	)
-	// } else {
-	// 	key = inputLine //no outputDelimeter in the input, so we take the whole line as the key
-	// 	//and here for new config substitutions
-	// 	r = strings.NewReplacer(
-	// 		"{%KEY}", key,
-	// 	)
-	// }
 
-	// body = r.Replace(config.FieldString("ReqBody", command))
-
+	body := config.FieldString("ReqBody", command)
+	urlx := config.FieldString("ReqUrl", command)
 	requestContentType := config.FieldString("ReqContentType", command)
 	requestType := config.FieldString("ReqType", command)
-
-	body = config.FieldString("ReqBody", command)
-	urlx = config.FieldString("ReqUrl", command)
 
 	if !(strings.HasPrefix(urlx, "http://") || strings.HasPrefix(urlx, "https://")) {
 		urlx = baseUrl + urlx
@@ -271,7 +247,8 @@ func (runner *Runner) httpReq(inputLine string, config *Config, command string, 
 	}
 
 	for hdr, vals := range req.Header {
-		req.Header.Set(hdr, strings.Replace(vals[0], "{%KEY}", inputLine, -1))
+		headerValue := RunnerMacros(command, inputLine, sessionVars, reqTime, vals[0])
+		req.Header.Set(hdr, headerValue)
 	}
 	if requestContentSize > 0 {
 		req.ContentLength = requestContentSize

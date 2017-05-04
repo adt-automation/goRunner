@@ -26,16 +26,7 @@ var CommandMacros = make(map[string][]string)
 var Md5Macros = make(map[string][]string)
 var Base64Macros = make(map[string][]string)
 
-var csvrx = regexp.MustCompile("{%CSV\\[(\\d+)\\]}")
-
-func inputColumnIndex(macroDeclaration string) int {
-	return -1
-	// i, ok := inputColHeaders[macroDeclaration]
-	// if !ok {
-	// 	i = -1
-	// }
-	// return i
-}
+var reArgs = regexp.MustCompile("{%ARGS\\[(\\d+)\\]}")
 
 func arrayContains(arr []string, str string) bool {
 	i := 0
@@ -236,16 +227,6 @@ func _runnerMacro(command string, declaration string, inputData string, sessionV
 		}
 	} else if ok1 {
 		return reqTime.Add(prt.duration).Format(prt.format)
-	} else if declaration == "{%KEY}" {
-		arr := strings.Split(inputData, inputDelimeter)
-		return arr[0]
-	} else if declaration == "{%VAL}" {
-		arr := strings.Split(inputData, inputDelimeter)
-		if len(arr) > 1 {
-			return arr[1]
-		} else {
-			return ""
-		}
 	} else if declaration == "{%MD5SUM}" {
 		testMd5 := Md5Inputs[command]
 		for _, macro := range Md5Macros[command] {
@@ -262,18 +243,19 @@ func _runnerMacro(command string, declaration string, inputData string, sessionV
 		// an env var macro like {$SECRET}
 		return os.Getenv(declaration[2 : len(declaration)-1])
 	} else {
-		i := -1
-		// csvrx is package global, defined at top of the file, regexp.MustCompile("{%CSV\\[(\\d+)\\]}")
-		csvIndex := csvrx.FindStringSubmatch(declaration)
-		if len(csvIndex) > 0 {
-			i, _ = strconv.Atoi(csvIndex[1])
-		} else {
-			i = inputColumnIndex(declaration)
-		}
-		if i >= 0 {
+		// Check if it match {%ARGS[X]}
+		argsIndex := reArgs.FindStringSubmatch(declaration) // regexp.MustCompile("{%ARGS\\[(\\d+)\\]}")
+		if len(argsIndex) > 0 {
+			i, _ := strconv.Atoi(argsIndex[1])
 			arr := strings.Split(inputData, inputDelimeter)
+			if i >= len(arr) {
+				// TODO : print error ?
+				return ""
+			}
 			return arr[i]
-		} else if declaration[1] == '%' {
+		}
+		// Check if it match a session var
+		if declaration[1] == '%' {
 			session_var := declaration[2 : len(declaration)-1]
 			val, ok := sessionVars[session_var]
 			if ok {
