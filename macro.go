@@ -237,10 +237,10 @@ func _runnerMacro(command string, declaration string, inputData string, sessionV
 	} else if ok1 {
 		return reqTime.Add(prt.duration).Format(prt.format)
 	} else if declaration == "{%KEY}" {
-		arr := strings.Split(inputData, delimeter)
+		arr := strings.Split(inputData, outputDelimeter)
 		return arr[0]
 	} else if declaration == "{%VAL}" {
-		arr := strings.Split(inputData, delimeter)
+		arr := strings.Split(inputData, outputDelimeter)
 		if len(arr) > 1 {
 			return arr[1]
 		} else {
@@ -271,7 +271,7 @@ func _runnerMacro(command string, declaration string, inputData string, sessionV
 			i = inputColumnIndex(declaration)
 		}
 		if i >= 0 {
-			arr := strings.Split(inputData, delimeter)
+			arr := strings.Split(inputData, outputDelimeter)
 			return arr[i]
 		} else if declaration[1] == '%' {
 			session_var := declaration[2 : len(declaration)-1]

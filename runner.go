@@ -141,7 +141,7 @@ func (runner *Runner) client(result *Result, trafficChannel chan string, clientI
 	time.Sleep(initialDelay)
 
 	msDelay := 0
-	for id := range trafficChannel {
+	for inputLine := range trafficChannel {
 		//read in the line. either a generated id or (TODO) a url
 		//		id := <-trafficChannel //urlTemplate : 100|10000|about
 
@@ -149,7 +149,7 @@ func (runner *Runner) client(result *Result, trafficChannel chan string, clientI
 		// cookieMap and sessionVars should start fresh every time we start a DoReq session
 		var cookieMap = make(map[string]*http.Cookie)
 		var sessionVars = make(map[string]string)
-		runner.DoReq(0, id, result, clientId, baseUrl, msDelay, cookieMap, sessionVars, 0.0) //val,resp, err
+		runner.DoReq(0, inputLine, result, clientId, baseUrl, msDelay, cookieMap, sessionVars, 0.0) //val,resp, err
 		msDelay = runner.postSessionDelay
 	}
 	if time.Now().Before(runner.stopTime) {
@@ -165,7 +165,7 @@ func (runner *Runner) PrintSessionLog() {
 }
 
 func PrintLogHeader(delimiter string) {
-	d := delimeter[0]
+	d := outputDelimeter[0]
 	// runner.stdoutMutex.Lock()
 	fmt.Printf("startTime%ccommand%cstep%crequestType%csessionKey%csession%cid%cshortUrl%cstatusCode%csessionVarsOk%cclientId%cbyteSize%cserver%cduration%cserverDuration%cbuildId%cinputLine\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d)
 	// runner.stdoutMutex.Unlock()
@@ -191,7 +191,7 @@ func (runner *Runner) httpReq(inputData string, config *Config, command string, 
 
 	//this is where all the good stuff happens
 	//"DEVICE_INFORMATION", "RING", "SET_ADMIN", "MESSAGE", "INSTALL_MDM", "InstallProfile", "TENANT_INFO", ...
-	arr := strings.Split(inputData, delimeter) // for 2 value inputs to stdin
+	arr := strings.Split(inputData, outputDelimeter) // for 2 value inputs to stdin
 	var key, val, body, urlx string
 	var r *strings.Replacer
 	if len(arr) > 1 {
@@ -203,7 +203,7 @@ func (runner *Runner) httpReq(inputData string, config *Config, command string, 
 			"{%VAL}", val,
 		)
 	} else {
-		key = inputData //no delimeter in the input, so we take the whole line as the key
+		key = inputData //no outputDelimeter in the input, so we take the whole line as the key
 		//and here for new config substitutions
 		r = strings.NewReplacer(
 			"{%KEY}", key,
@@ -671,8 +671,8 @@ func (runner *Runner) doLog(command string, config *Config, requestMethod string
 		inputVals = inputSplit[1]
 		if len(inputVals) > 0 {
 			inputVals = "," + inputVals
-			if delimeter[0] != ',' {
-				inputVals = strings.Replace(inputVals, ",", delimeter[0:1], -1)
+			if outputDelimeter[0] != ',' {
+				inputVals = strings.Replace(inputVals, ",", outputDelimeter[0:1], -1)
 			}
 		}
 	}
@@ -788,7 +788,7 @@ func (runner *Runner) doLog(command string, config *Config, requestMethod string
 OUTPUTLOG:
 	const layout = "2006-01-02 15:04:05.000"
 
-	d := delimeter[0]
+	d := outputDelimeter[0]
 
 	runner.stdoutMutex.Lock()
 	fmt.Printf("%v%c%s%c%d%c%s%c%s%c%s%c%s%c%s%c%d%c%v%c%d%c%d%c%v%c%.3f%c%.3f%c%s%s\n", startTime.Format(layout), d, command, d, stepCounter, d, requestMethod, d, sessionKey, d, session, d, mdi, d, shortUrl, d, statusCode, d, foundSessionVars, d, clientId, d, byteSize, d, server, d, duration, d, serverTime, d, Build, inputVals)

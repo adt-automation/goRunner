@@ -19,6 +19,7 @@ import (
 	"os/signal"
 	"runtime"
 	"runtime/pprof"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -26,20 +27,21 @@ import (
 // -------------------------------------------------------------------------------------------------
 // Flags
 var (
-	clients     int
-	targetTPS   float64
-	baseUrl     string
-	configFile  string
-	inputFile   string
-	delimeter   string
-	headerExit  bool
-	noHeader    bool
-	cpuProfile  string
-	verbose     bool
-	keepAlive   bool
-	testTimeout time.Duration
-	readTimeout time.Duration
-	rampUp      time.Duration
+	clients         int
+	targetTPS       float64
+	baseUrl         string
+	configFile      string
+	inputFile       string
+	outputDelimeter string
+	inputDelimeter  string
+	headerExit      bool
+	noHeader        bool
+	cpuProfile      string
+	verbose         bool
+	keepAlive       bool
+	testTimeout     time.Duration
+	readTimeout     time.Duration
+	rampUp          time.Duration
 )
 
 func init() {
@@ -50,7 +52,8 @@ func init() {
 	flag.Float64Var(&targetTPS, "targetTPS", 1000000, "The default max TPS is set to 1 million. Good luck reaching this :p")
 	flag.StringVar(&baseUrl, "baseUrl", "", "The host to test. Example https://test2.someserver.org")
 	flag.StringVar(&configFile, "configFile", "config.ini", "Config file location")
-	flag.StringVar(&delimeter, "d", ",", "Output file delimeter")
+	flag.StringVar(&outputDelimeter, "outputDelimeter", ",", "Output CSV delimeter. Must be different than inputDelimeter")
+	flag.StringVar(&inputDelimeter, "inputDelimeter", "|", "Input line delimeter - cannot be the same as the outputDelimiter. It's recommended that the input data should not contain the main delimiter character if you want to easily parse the csv output. Also, the inputDelimiter should be a character that is not present in the normal csv output. This is only a recommendation however. Since the inputLine will be printed as the very last column in the CSV, it will still be possible to parse the output with standard text utilities.")
 	flag.BoolVar(&headerExit, "hx", false, "Print output header row and exit")
 	flag.BoolVar(&noHeader, "nh", false, "Don't output header row. Default to false.")
 	flag.DurationVar(&readTimeout, "readtimeout", time.Duration(30)*time.Second, "Timeout duration for the target API to send the first response byte. Default 30s")
@@ -73,7 +76,7 @@ func init() {
 	flag.Usage = func() {
 		defaultUsage()
 		// fmt.Fprintf(os.Stderr, "\n\n")
-		// PrintLogHeader(delimeter)
+		// PrintLogHeader(outputDelimeter)
 	}
 }
 
@@ -83,7 +86,7 @@ func main() {
 	flag.Parse()
 
 	if headerExit {
-		PrintLogHeader(delimeter)
+		PrintLogHeader(outputDelimeter)
 		os.Exit(0)
 	}
 
@@ -91,6 +94,10 @@ func main() {
 	// Validate input & flags
 	if clients < 1 {
 		flagError("Number of concurrent client should be at least 1")
+	}
+
+	if inputDelimeter == outputDelimeter {
+		flagError("inputDelimter and outputDelimeter must be different")
 	}
 
 	if cpuProfile != "" {
@@ -130,7 +137,7 @@ func main() {
 	// Output log headers
 	runner.printSessionSummary()
 	if !noHeader {
-		PrintLogHeader(delimeter)
+		PrintLogHeader(outputDelimeter)
 		runner.PrintSessionLog() // ???
 	}
 
@@ -153,6 +160,11 @@ func main() {
 	}
 
 	for scanner.Scan() {
+		inputLine := scanner.Text()
+		if strings.Contains(inputLine, outputDelimeter) {
+			fmt.Fprintf(os.Stderr, "/!\\ input contains forbidden %s (input can't contain outputDelimeter)", outputDelimeter)
+			runner.Exit()
+		}
 		trafficChannel <- scanner.Text() //put work into the channel from Stdin
 	}
 	close(trafficChannel)
