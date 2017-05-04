@@ -162,7 +162,7 @@ func main() {
 	for scanner.Scan() {
 		inputLine := scanner.Text()
 		if strings.Contains(inputLine, outputDelimeter) {
-			fmt.Fprintf(os.Stderr, "/!\\ input contains forbidden %s (input can't contain outputDelimeter)", outputDelimeter)
+			fmt.Fprintf(os.Stderr, "\n/!\\ input contains forbidden '%s' (input can't contain outputDelimeter) /!\\\n", outputDelimeter)
 			runner.Exit()
 		}
 		trafficChannel <- scanner.Text() //put work into the channel from Stdin

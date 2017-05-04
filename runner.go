@@ -113,7 +113,6 @@ func NewRunner(configFile string) *Runner {
 		sessionTime := toReturn.EstimateSessionTime()
 		toReturn.rampUpDelay = sessionTime / time.Duration(clients)
 	}
-	fmt.Fprintf(os.Stderr, "Spacing sessions %v apart to ramp up to %d client sessions\n", toReturn.rampUpDelay, clients)
 
 	return toReturn
 }
@@ -167,7 +166,7 @@ func (runner *Runner) PrintSessionLog() {
 func PrintLogHeader(delimiter string) {
 	d := outputDelimeter[0]
 	// runner.stdoutMutex.Lock()
-	fmt.Printf("startTime%ccommand%cstep%crequestType%csessionKey%csession%cid%cshortUrl%cstatusCode%csessionVarsOk%cclientId%cbyteSize%cserver%cduration%cserverDuration%cbuildId%cinputLine\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d)
+	fmt.Printf("startTime%ccommand%cstep%crequestType%csessionKey%csession%cid%cshortUrl%cstatusCode%csessionVarsOk%cclientId%cbyteSize%cserver%cduration%cserverDuration%cbuildId\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d)
 	// runner.stdoutMutex.Unlock()
 }
 
@@ -185,44 +184,46 @@ func (runner *Runner) EstimateSessionTime() time.Duration {
 	return dur
 }
 
-func (runner *Runner) httpReq(inputData string, config *Config, command string, baseUrl string, cookieMap map[string]*http.Cookie, sessionVars map[string]string, reqTime time.Time) (*http.Request, *http.Response, error) {
+func (runner *Runner) httpReq(inputLine string, config *Config, command string, baseUrl string, cookieMap map[string]*http.Cookie, sessionVars map[string]string, reqTime time.Time) (*http.Request, *http.Response, error) {
 
 	var reqErr error
 
 	//this is where all the good stuff happens
 	//"DEVICE_INFORMATION", "RING", "SET_ADMIN", "MESSAGE", "INSTALL_MDM", "InstallProfile", "TENANT_INFO", ...
-	arr := strings.Split(inputData, outputDelimeter) // for 2 value inputs to stdin
-	var key, val, body, urlx string
-	var r *strings.Replacer
-	if len(arr) > 1 {
-		key = arr[0]
-		val = arr[1] //need to check if this exists, it will only be in the input line for APIs that req. 2 inputs
-		//add here if you need to add new config substitutions
-		r = strings.NewReplacer(
-			"{%KEY}", key,
-			"{%VAL}", val,
-		)
-	} else {
-		key = inputData //no outputDelimeter in the input, so we take the whole line as the key
-		//and here for new config substitutions
-		r = strings.NewReplacer(
-			"{%KEY}", key,
-		)
-	}
+	// arr := strings.Split(inputLine, inputDelimeter) // for 2 value inputs to stdin
+	// var key, val,
+	var body, urlx string
+	// var r *strings.Replacer
+	// if len(arr) > 1 {
+	// 	key = arr[0]
+	// 	val = arr[1] //need to check if this exists, it will only be in the input line for APIs that req. 2 inputs
+	// 	//add here if you need to add new config substitutions
+	// 	r = strings.NewReplacer(
+	// 		"{%KEY}", key,
+	// 		"{%VAL}", val,
+	// 	)
+	// } else {
+	// 	key = inputLine //no outputDelimeter in the input, so we take the whole line as the key
+	// 	//and here for new config substitutions
+	// 	r = strings.NewReplacer(
+	// 		"{%KEY}", key,
+	// 	)
+	// }
 
-	body = r.Replace(config.FieldString("ReqBody", command))
-	urlx = config.FieldString("ReqUrl", command)
-	if strings.HasPrefix(urlx, "http://") || strings.HasPrefix(urlx, "https://") {
-		urlx = r.Replace(urlx)
-	} else {
-		urlx = r.Replace(baseUrl + urlx)
-	}
+	// body = r.Replace(config.FieldString("ReqBody", command))
 
 	requestContentType := config.FieldString("ReqContentType", command)
 	requestType := config.FieldString("ReqType", command)
 
-	body = RunnerMacros(command, inputData, sessionVars, reqTime, body)
-	urlx = RunnerMacros(command, inputData, sessionVars, reqTime, urlx)
+	body = config.FieldString("ReqBody", command)
+	urlx = config.FieldString("ReqUrl", command)
+
+	if !(strings.HasPrefix(urlx, "http://") || strings.HasPrefix(urlx, "https://")) {
+		urlx = baseUrl + urlx
+	}
+
+	body = RunnerMacros(command, inputLine, sessionVars, reqTime, body)
+	urlx = RunnerMacros(command, inputLine, sessionVars, reqTime, urlx)
 
 	reqReader := io.Reader(bytes.NewReader([]byte(body)))
 	requestContentSize := int64(len(body))
@@ -248,7 +249,7 @@ func (runner *Runner) httpReq(inputData string, config *Config, command string, 
 		if verbose {
 			fmt.Fprintf(os.Stderr, "\nERROR=%v URL==%v requestType=%v body=%v\n", reqErr, urlx, requestType, body)
 		}
-		fmt.Fprintf(os.Stderr, "ERROR: command %s input %s TODO- Need a log entry here because we returned without logging due to an error generating the request!\n", command, inputData)
+		fmt.Fprintf(os.Stderr, "ERROR: command %s input %s TODO- Need a log entry here because we returned without logging due to an error generating the request!\n", command, inputLine)
 		var empty *http.Response
 		return req, empty, reqErr
 	}
@@ -270,7 +271,7 @@ func (runner *Runner) httpReq(inputData string, config *Config, command string, 
 	}
 
 	for hdr, vals := range req.Header {
-		req.Header.Set(hdr, strings.Replace(vals[0], "{%KEY}", string(inputData), -1))
+		req.Header.Set(hdr, strings.Replace(vals[0], "{%KEY}", inputLine, -1))
 	}
 	if requestContentSize > 0 {
 		req.ContentLength = requestContentSize
@@ -303,12 +304,12 @@ func (runner *Runner) httpReq(inputData string, config *Config, command string, 
 			//JSESSIONID=17BAC3B4C633DCE99E6494BA8FF622A1.aurlt3621; Path=/admin; Secure; HttpOnly
 			req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: session, Expires: expiration})
 			//, Path: /admin, Secure: true, HttpOnly: true
-			//}else if sessionMap[mdi] != "" {
+			//}else if sessionMap[inputLine] != "" {
 			//	expiration := time.Now().Add(365 * 24 * time.Hour)
-			//	req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: sessionMap[mdi], Expires: expiration})
+			//	req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: sessionMap[inputLine], Expires: expiration})
 		} else {
 			if debug {
-				fmt.Fprintf(os.Stderr, "Session missing: session=%s\n", mdi)
+				fmt.Fprintf(os.Stderr, "Session missing: session=%s\n", inputLine)
 			}
 		}
 	*/
@@ -327,7 +328,7 @@ func (runner *Runner) httpReq(inputData string, config *Config, command string, 
 
 	resp, err := httpRoundTrip(runner.httpTransport, req)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s %s ERROR %s: %v\n", command, inputData, time.Now(), err.Error())
+		fmt.Fprintf(os.Stderr, "%s %s ERROR %s: %v\n", command, inputLine, time.Now(), err.Error())
 	} else if verbose {
 		dump2, err2 := httputil.DumpResponse(resp, true)
 		if err2 != nil {
@@ -337,10 +338,10 @@ func (runner *Runner) httpReq(inputData string, config *Config, command string, 
 		}
 	}
 
-	//start tracking the sessions now. Before we kept the cookies are 1-to-1-to-1 between the device, mdi and account ids
+	//start tracking the sessions now. Before we kept the cookies are 1-to-1-to-1 between the device, inputLine and account ids
 	//this was possible due to the following simplification prior to loading the devices (it skips the 2 admin users in the setup)
 	//alter table adam2db.devices  AUTO_INCREMENT=3;
-	//alter table adam2db.mdis  AUTO_INCREMENT=3;
+	//alter table adam2db.inputLines  AUTO_INCREMENT=3;
 
 	if resp != nil {
 		for _, cookie := range resp.Cookies() {
@@ -369,7 +370,7 @@ func httpRoundTrip(tr *http.Transport, req *http.Request) (*http.Response, error
 }
 
 // e.g. servAddr := "gsess-dr.adtpulse.com:11083"
-func (runner *Runner) tcpReq(inputData string, config *Config, command string, servAddr string, sessionVars map[string]string) []byte {
+func (runner *Runner) tcpReq(inputLine string, config *Config, command string, servAddr string, sessionVars map[string]string) []byte {
 
 	var reqTime time.Time = time.Now()
 
@@ -385,7 +386,7 @@ func (runner *Runner) tcpReq(inputData string, config *Config, command string, s
 	}
 
 	input := config.FieldString("ReqBody", command)
-	input = RunnerMacros(command, inputData, sessionVars, reqTime, input)
+	input = RunnerMacros(command, inputLine, sessionVars, reqTime, input)
 
 	send, err := hex.DecodeString(strings.Replace(input, " ", "", -1))
 	if err != nil {
@@ -403,7 +404,7 @@ func (runner *Runner) tcpReq(inputData string, config *Config, command string, s
 		ebytes := send[encryptStart : encryptStart+encryptCt]
 
 		ivStr := config.FieldString("EncryptIv", command)
-		ivStr = RunnerMacros(command, inputData, sessionVars, reqTime, ivStr)
+		ivStr = RunnerMacros(command, inputLine, sessionVars, reqTime, ivStr)
 		iv, err := hex.DecodeString(strings.Replace(ivStr, " ", "", -1))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "command %s hex decode failed: %s\n", command, err.Error())
@@ -411,7 +412,7 @@ func (runner *Runner) tcpReq(inputData string, config *Config, command string, s
 		}
 		iv = buildIv(reqTime)
 		keyStr := config.FieldString("EncryptKey", command)
-		keyStr = RunnerMacros(command, inputData, sessionVars, reqTime, keyStr)
+		keyStr = RunnerMacros(command, inputLine, sessionVars, reqTime, keyStr)
 
 		if len(keyStr) == 0 {
 			log.Println("encryption key has empty value")
@@ -459,7 +460,7 @@ func (runner *Runner) tcpReq(inputData string, config *Config, command string, s
 	return reply[0:responseLen]
 }
 
-func (runner *Runner) DoReq(stepCounter int, mdi string, result *Result, clientId int, baseUrl string, delay int, cookieMap map[string]*http.Cookie, sessionVars map[string]string, commandTime float64) string {
+func (runner *Runner) DoReq(stepCounter int, inputLine string, result *Result, clientId int, baseUrl string, delay int, cookieMap map[string]*http.Cookie, sessionVars map[string]string, commandTime float64) string {
 
 	if !runner.stopTime.IsZero() && time.Now().Add(time.Duration(delay)*time.Millisecond).After(runner.stopTime) {
 		return ""
@@ -488,10 +489,10 @@ func (runner *Runner) DoReq(stepCounter int, mdi string, result *Result, clientI
 		startTime := time.Now()
 		requestType := runner.config.FieldString("ReqType", command)
 		if requestType == "TCP" {
-			tcpReply = runner.tcpReq(mdi, runner.config, command, baseUrl, sessionVars)
+			tcpReply = runner.tcpReq(inputLine, runner.config, command, baseUrl, sessionVars)
 			shortUrl = (runner.reUrlFilter).ReplaceAllString(baseUrl, "")
 		} else {
-			httpRequest, httpResp, httpError = runner.httpReq(mdi, runner.config, command, baseUrl, cookieMap, sessionVars, startTime)
+			httpRequest, httpResp, httpError = runner.httpReq(inputLine, runner.config, command, baseUrl, cookieMap, sessionVars, startTime)
 			shortUrl = (runner.reUrlFilter).ReplaceAllString(httpRequest.URL.String(), "")
 			requestType = httpRequest.Method
 
@@ -499,7 +500,7 @@ func (runner *Runner) DoReq(stepCounter int, mdi string, result *Result, clientI
 
 		// -----------------------------------------------------------------------------------------
 		// Process request response & log
-		session, continueSession = runner.doLog(command, runner.config, requestType, tcpReply, httpResp, result, httpError, startTime, shortUrl, mdi, clientId, stepCounter, "", sessionVars)
+		session, continueSession = runner.doLog(command, runner.config, requestType, tcpReply, httpResp, result, httpError, startTime, shortUrl, inputLine, clientId, stepCounter, "", sessionVars)
 
 		delay = runner.config.FieldInteger("MsecDelay", command)
 
@@ -515,13 +516,13 @@ func (runner *Runner) DoReq(stepCounter int, mdi string, result *Result, clientI
 	}
 
 	if verbose && stepCounter < len(runner.commandQueue) {
-		fmt.Fprintf(os.Stderr, "mdi %s stepCounter %d nextCommand=%v\n", mdi, stepCounter, runner.commandQueue[stepCounter])
+		fmt.Fprintf(os.Stderr, "inputLine %s stepCounter %d nextCommand=%v\n", inputLine, stepCounter, runner.commandQueue[stepCounter])
 	}
 
 	if continueSession && stepCounter < len(runner.commandQueue) && runner.commandQueue[stepCounter] != "none" {
-		session = runner.DoReq(stepCounter, mdi, result, clientId, baseUrl, delay, cookieMap, sessionVars, commandTime)
+		session = runner.DoReq(stepCounter, inputLine, result, clientId, baseUrl, delay, cookieMap, sessionVars, commandTime)
 	} else if len(runner.config.CommandSequence.SessionLog) > 0 {
-		fmt.Fprintf(os.Stderr, "%s\n", SessionLogMacros(mdi, sessionVars, time.Now(), runner.config.CommandSequence.SessionLog))
+		fmt.Fprintf(os.Stderr, "%s\n", SessionLogMacros(inputLine, sessionVars, time.Now(), runner.config.CommandSequence.SessionLog))
 	}
 
 	return session
@@ -540,6 +541,7 @@ func (runner *Runner) printSessionSummary() {
 	fmt.Fprintf(os.Stderr, "API host:                       %s\n", baseUrl)
 	const layout = "2006-01-02 15:04:05"
 	fmt.Fprintf(os.Stderr, "Test start time:                %v\n", time.Now().Format(layout))
+	fmt.Fprintf(os.Stderr, "Spacing sessions (rampUp):      %v\n", runner.rampUpDelay)
 }
 
 func GetResults(results map[int]*Result, overallStartTime time.Time) map[string]int32 {
@@ -567,16 +569,16 @@ func PrintResults(myMap map[string]int32, overallStartTime time.Time) {
 		elapsed = 1
 	}
 	fmt.Fprintln(os.Stderr)
-	fmt.Fprintf(os.Stderr, "Requests:                       %10d hits\n", myMap["requests"])
-	fmt.Fprintf(os.Stderr, "Successful requests:            %10d hits\n", myMap["success"])
-	fmt.Fprintf(os.Stderr, "Network failed:                 %10d hits\n", myMap["networkFailed"])
-	fmt.Fprintf(os.Stderr, "Bad requests failed (!2xx):     %10d hits\n", myMap["badFailed"])
-	fmt.Fprintf(os.Stderr, "Successfull requests rate:      %10f hits/sec\n", float32(myMap["success"])/(float32(elapsed)+.01))
-	fmt.Fprintf(os.Stderr, "Read throughput:                %f bytes/sec\n", float32(myMap["readThroughput"])/(float32(myMap["elapsed"])+.01))
-	fmt.Fprintf(os.Stderr, "Write throughput:               %f bytes/sec\n", float32(myMap["writeThroughput"])/(float32(myMap["elapsed"])+.01))
-	fmt.Fprintf(os.Stderr, "Test time:                      %d sec\n", elapsed)
+	fmt.Fprintf(os.Stderr, "Requests:                       %-10d hits\n", myMap["requests"])
+	fmt.Fprintf(os.Stderr, "Successful requests:            %-10d hits\n", myMap["success"])
+	fmt.Fprintf(os.Stderr, "Network failed:                 %-10d hits\n", myMap["networkFailed"])
+	fmt.Fprintf(os.Stderr, "Bad requests failed (!2xx):     %-10d hits\n", myMap["badFailed"])
+	fmt.Fprintf(os.Stderr, "Successfull requests rate:      %-10f hits/sec\n", float32(myMap["success"])/(float32(elapsed)+.01))
+	fmt.Fprintf(os.Stderr, "Read throughput:                %-10f bytes/sec\n", float32(myMap["readThroughput"])/(float32(myMap["elapsed"])+.01))
+	fmt.Fprintf(os.Stderr, "Write throughput:               %-10f bytes/sec\n", float32(myMap["writeThroughput"])/(float32(myMap["elapsed"])+.01))
+	fmt.Fprintf(os.Stderr, "Test time:                      %-10d sec\n", elapsed)
 	const layout = "2006-01-02 15:04:05"
-	fmt.Fprintf(os.Stderr, "Test end time:                  %v\n", time.Now().Format(layout))
+	fmt.Fprintf(os.Stderr, "Test end time:                  %-v\n", time.Now().Format(layout))
 }
 
 func (runner *Runner) exitStatus(myMap map[string]int32) int {
@@ -589,7 +591,7 @@ func (runner *Runner) exitStatus(myMap map[string]int32) int {
 	}
 }
 
-func (runner *Runner) findSessionVars(command string, config *Config, input string, inputData string, startTime time.Time, sessionVars map[string]string, hex bool) (bool, bool) {
+func (runner *Runner) findSessionVars(command string, config *Config, input string, inputLine string, startTime time.Time, sessionVars map[string]string, hex bool) (bool, bool) {
 
 	if len(input) <= 2 {
 		// automatically false due to no chance to capture the session var
@@ -603,7 +605,7 @@ func (runner *Runner) findSessionVars(command string, config *Config, input stri
 	for _, session_var := range config.Command[command].SessionVar {
 		s := strings.SplitN(session_var, " ", 2) // s = ['XTOKEN', 'detail="(.+)"']
 		svar := s[0]
-		sgrep := RunnerMacrosRegexp(command, inputData, sessionVars, startTime, s[1])
+		sgrep := RunnerMacrosRegexp(command, inputLine, sessionVars, startTime, s[1])
 		regex := regexp.MustCompile(sgrep) // /detail="(.+)"/
 		if len(regex.String()) <= 0 {
 			continue
@@ -643,7 +645,7 @@ func (runner *Runner) findSessionVars(command string, config *Config, input stri
 
 }
 
-func (runner *Runner) doLog(command string, config *Config, requestMethod string, tcpResponse []byte, httpResponse *http.Response, result *Result, err error, startTime time.Time, shortUrl string, mdi string, clientId int, stepCounter int, lastSession string, sessionVars map[string]string) (string, bool) {
+func (runner *Runner) doLog(command string, config *Config, requestMethod string, tcpResponse []byte, httpResponse *http.Response, result *Result, err error, startTime time.Time, shortUrl string, inputLine string, clientId int, stepCounter int, lastSession string, sessionVars map[string]string) (string, bool) {
 
 	var (
 		sessionKey        string
@@ -653,8 +655,6 @@ func (runner *Runner) doLog(command string, config *Config, requestMethod string
 		server            string
 		serverTime        float64
 		duration          float64
-		inputVals         string
-		inputData         string
 		foundSessionVars  bool
 		foundMustCaptures bool
 		continueSession   bool
@@ -664,18 +664,7 @@ func (runner *Runner) doLog(command string, config *Config, requestMethod string
 	// ---------------------------------------------------------------------------------------------
 	// Init common vars between HTTP and TCP
 	duration = (time.Since(startTime)).Seconds()
-	inputData = mdi // capture mdi before it is split
-	if strings.Index(mdi, ",") > -1 {
-		inputSplit := strings.SplitN(mdi, ",", 2)
-		mdi = inputSplit[0]
-		inputVals = inputSplit[1]
-		if len(inputVals) > 0 {
-			inputVals = "," + inputVals
-			if outputDelimeter[0] != ',' {
-				inputVals = strings.Replace(inputVals, ",", outputDelimeter[0:1], -1)
-			}
-		}
-	}
+
 	continueSession = true
 	sessionKey = "0"
 	tcp = requestMethod == "TCP"
@@ -693,7 +682,7 @@ func (runner *Runner) doLog(command string, config *Config, requestMethod string
 		//atomic.AddInt32(&result.networkFailed, 1)
 		//atomic.AddInt32(&result.badFailed, 1)
 
-		foundSessionVars, foundMustCaptures := runner.findSessionVars(command, config, fmt.Sprintf("%x", tcpResponse), inputData, startTime, sessionVars, tcp)
+		foundSessionVars, foundMustCaptures := runner.findSessionVars(command, config, fmt.Sprintf("%x", tcpResponse), inputLine, startTime, sessionVars, tcp)
 		runner.foundAllSessionVars = runner.foundAllSessionVars && foundSessionVars
 		continueSession = continueSession && foundMustCaptures
 		goto OUTPUTLOG
@@ -709,7 +698,7 @@ func (runner *Runner) doLog(command string, config *Config, requestMethod string
 	serverTime = 10.0 //default to a big number so it will be noticed in the output data
 	if httpResponse != nil {
 		//The reason we check for session here is so that registration does not have to use the sessionMap
-		//The registration process can be defined to use the account_key, while regular device interaction might use mdi (or device) key
+		//The registration process can be defined to use the account_key, while regular device interaction might use inputLine (or device) key
 		if httpResponse.Header.Get("Set-Cookie") != "" {
 			for _, cookie := range httpResponse.Cookies() {
 				if verbose {
@@ -730,11 +719,11 @@ func (runner *Runner) doLog(command string, config *Config, requestMethod string
 		dump, err := httputil.DumpResponse(httpResponse, true)
 		byteSize = len(dump)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR \"%s\" dumping http response to local (cient %d command %s input %s)\n", err.Error(), clientId, command, mdi)
+			fmt.Fprintf(os.Stderr, "ERROR \"%s\" dumping http response to local (cient %d command %s input %s)\n", err.Error(), clientId, command, inputLine)
 		}
 
 		sessionVarsInput := strings.Replace(string(dump), "\r", "", -1)
-		foundSessionVars, foundMustCaptures = runner.findSessionVars(command, config, sessionVarsInput, inputData, startTime, sessionVars, false)
+		foundSessionVars, foundMustCaptures = runner.findSessionVars(command, config, sessionVarsInput, inputLine, startTime, sessionVars, false)
 		runner.foundAllSessionVars = runner.foundAllSessionVars && foundSessionVars
 		continueSession = continueSession && foundMustCaptures
 
@@ -763,9 +752,9 @@ func (runner *Runner) doLog(command string, config *Config, requestMethod string
 	} else {
 		atomic.AddInt32(&result.networkFailed, 1) //atomic++
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR: %s on command \"%s\" response (client %d, input \"%s\")\n", err.Error(), command, clientId, mdi)
+			fmt.Fprintf(os.Stderr, "ERROR: %s on command \"%s\" response (client %d, input \"%s\")\n", err.Error(), command, clientId, inputLine)
 		} else {
-			fmt.Fprintf(os.Stderr, "ERROR: no response on command \"%s\" response (client %d, input \"%s\")\n", command, clientId, mdi)
+			fmt.Fprintf(os.Stderr, "ERROR: no response on command \"%s\" response (client %d, input \"%s\")\n", command, clientId, inputLine)
 		}
 		sessionVars := make([]string, 0)
 		for _, session_var := range config.Command[command].SessionVar {
@@ -774,13 +763,13 @@ func (runner *Runner) doLog(command string, config *Config, requestMethod string
 		}
 		if len(sessionVars) > 0 {
 			fmt.Fprintf(os.Stderr, "ERROR: SessionVars \"%s\" from command \"%s\" were not matched in bad/empty/undelivered response (client %d, input \"%s\")\n",
-				strings.Join(sessionVars, ","), command, clientId, mdi)
+				strings.Join(sessionVars, ","), command, clientId, inputLine)
 			foundSessionVars = false
 		}
 		var mustCapture = config.FieldString("MustCapture", command)
 		if len(mustCapture) > 0 {
 			fmt.Fprintf(os.Stderr, "ERROR: MustCapture \"%s\" from command \"%s\" was not matched in bad/empty/undelivered response (client %d, input \"%s\")\n",
-				mustCapture, command, clientId, mdi)
+				mustCapture, command, clientId, inputLine)
 			continueSession = false
 		}
 	}
@@ -791,7 +780,7 @@ OUTPUTLOG:
 	d := outputDelimeter[0]
 
 	runner.stdoutMutex.Lock()
-	fmt.Printf("%v%c%s%c%d%c%s%c%s%c%s%c%s%c%s%c%d%c%v%c%d%c%d%c%v%c%.3f%c%.3f%c%s%s\n", startTime.Format(layout), d, command, d, stepCounter, d, requestMethod, d, sessionKey, d, session, d, mdi, d, shortUrl, d, statusCode, d, foundSessionVars, d, clientId, d, byteSize, d, server, d, duration, d, serverTime, d, Build, inputVals)
+	fmt.Printf("%v%c%s%c%d%c%s%c%s%c%s%c%s%c%s%c%d%c%v%c%d%c%d%c%v%c%.3f%c%.3f%c%s\n", startTime.Format(layout), d, command, d, stepCounter, d, requestMethod, d, sessionKey, d, session, d, inputLine, d, shortUrl, d, statusCode, d, foundSessionVars, d, clientId, d, byteSize, d, server, d, duration, d, serverTime, d, Build)
 	runner.stdoutMutex.Unlock()
 
 	return session, continueSession
