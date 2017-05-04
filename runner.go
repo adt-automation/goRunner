@@ -113,6 +113,7 @@ func NewRunner(configFile string) *Runner {
 		sessionTime := toReturn.EstimateSessionTime()
 		toReturn.rampUpDelay = sessionTime / time.Duration(clients)
 	}
+	fmt.Fprintf(os.Stderr, "Spacing sessions %v apart to ramp up to %d client sessions\n", toReturn.rampUpDelay, clients)
 
 	return toReturn
 }
@@ -122,8 +123,6 @@ func (runner *Runner) Wait() {
 }
 
 func (runner *Runner) StartClients(trafficChannel chan string) {
-
-	fmt.Fprintf(os.Stderr, "Spacing sessions %v apart to ramp up to %d client sessions\n", runner.rampUpDelay, clients)
 
 	for i := 0; i < clients; i++ {
 		runner.wgClients.Add(1)

@@ -128,6 +128,7 @@ func main() {
 
 	// ---------------------------------------------------------------------------------------------
 	// Output log headers
+	runner.printSessionSummary()
 	if !noHeader {
 		PrintLogHeader(delimeter)
 		runner.PrintSessionLog() // ???
@@ -135,9 +136,6 @@ func main() {
 
 	// ---------------------------------------------------------------------------------------------
 	// Start clients
-	if !headerExit {
-		runner.printSessionSummary()
-	}
 	trafficChannel := make(chan string)
 	//	startTraffic(trafficChannel) //start reading on the channel
 	runner.StartClients(trafficChannel)
