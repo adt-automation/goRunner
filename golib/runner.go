@@ -656,7 +656,8 @@ func DoReq(stepCounter int, mdi string, config *CfgStruct, result *Result, clien
 	return
 }
 
-func GetResults(results map[int]*Result, overallStartTime time.Time) map[string]int32 {
+func GetResults(results map[int]*Result, overallStartTime time.Time) (map[string]int32, int32) {
+//func GetResults(results map[int]*Result, overallStartTime time.Time) (map[string]int32) {
 	summary := make(map[string]int32)
 	for _, result := range results {
 		summary["requests"] += result.Requests
@@ -667,11 +668,15 @@ func GetResults(results map[int]*Result, overallStartTime time.Time) map[string]
 		summary["writeThroughput"] += result.writeThroughput
 		//need to get final time here (last log entry time) in case the user hits contrl-c late after a run is done.
 	}
-	return summary
+	status := summary["requests"]-summary["success"]
+	return summary, status
+	//return summary
 }
 func ExitWithStatus(results map[int]*Result, overallStartTime time.Time) {
-	myMap := GetResults(results, overallStartTime)
+	//myMap := GetResults(results, overallStartTime)
+	myMap, _ := GetResults(results, overallStartTime)
 	PrintResults(myMap, overallStartTime)
+	//PrintResults(myMap, overallStartTime)
 	os.Exit(exitStatus(myMap))
 }
 
@@ -691,6 +696,7 @@ func PrintResults(myMap map[string]int32, overallStartTime time.Time) {
 	fmt.Fprintf(os.Stderr, "Test time:                      %d sec\n", elapsed)
 	const layout = "2006-01-02 15:04:05"
 	fmt.Fprintf(os.Stderr, "Test end time:                  %v\n", time.Now().Format(layout))
+	fmt.Fprintf(os.Stderr, "Overall Success Rate:		%.2f%%\n", (float32(myMap["success"])/(float32(myMap["requests"])))*100)
 }
 
 func exitStatus(myMap map[string]int32) int {
