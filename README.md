@@ -25,15 +25,17 @@ How to run the test (To make your own custom tests, just create your own ini con
 
 ![Example3](https://github.com/adt-automation/goRunner/blob/master/img/goRunnerCommandLine.gif?raw=true)
 
+
 How to analyse the results in a tool like Tableau (This becomes critical with million row automation or test runs):
 
 ![Example3](https://github.com/adt-automation/goRunner/blob/master/img/goRunnerTestAnalysis.gif?raw=true)
 
-Tableau chart of completed automation test with detail calls/minute broken out by HTTP return code: 
+
+Example Tableau charts of large load test with the API calls/minute broken out by HTTP return code: 
 ![Example3](https://github.com/adt-automation/goRunner/blob/master/img/imageLoadTestMix.png?raw=true)
 
 
 
-TPS chart:
+Example TPS chart for the same load test:
 
 ![Example4](https://github.com/adt-automation/goRunner/blob/master/img/imageLoadtestTPS.png?raw=true)
