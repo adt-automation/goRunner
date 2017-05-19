@@ -54,6 +54,8 @@ func TestXxx(*testing.T) {
 	var cookieMap = make(map[string]*http.Cookie)
 	var sessionVars = make(map[string]string)
 	overallStartTime := time.Now()
+	d := runner.Delimeter
+	fmt.Printf("startTime%vcommand%vnextCommand%vstep%vrequestType%vsessionKey%vsession%vgrep1%vgrep2%vid%vshortUrl%vstatusCode%vsessionVarsOk%vclientId%vbyteSize%vserver%vduration%vserverDuration\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d)
 	runner.DoReq(0, id, configuration, result, clientId, baseUrl, baseUrlFilter, msDelay, tr, cookieMap, sessionVars, grep1, grep2, stopTime, 0.0) //val,resp, err
 	message, exitCode := runner.GetResults(results, time.Now())
 
