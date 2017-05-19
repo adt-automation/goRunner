@@ -21,6 +21,9 @@ All load testing rules and the actual runtime behavior of the tool comes from th
  
 Finally, the results from each run will generate a CSV file that is formatted to display correctly in Tableau. After each run, just click a button in Tableau or another analytics tool to upload. You can then drag the dimensions and measures over to quickly see a time series analysis of the just completed test run, along with detailed drill-down capability for full analysis. The result is a clear picture of the performance capabilities for the system that was just tested, and when used in advance a rollout, it can find problems well before they impact the customer.
 
+How to run the test (To make your own custom tests, just create your own ini config file):
+![Example3](https://github.com/adt-automation/goRunner/blob/master/img/goRunnerCommandLine.gif?raw=true)
+
 Tableau chart of completed automation test with detail calls/minute broken out by HTTP return code: 
 ![Example3](https://github.com/adt-automation/goRunner/blob/master/img/imageLoadTestMix.png?raw=true)
 
