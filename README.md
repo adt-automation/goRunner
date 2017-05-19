@@ -26,7 +26,9 @@ How to run the test (To make your own custom tests, just create your own ini con
 ![Example3](https://github.com/adt-automation/goRunner/blob/master/img/goRunnerCommandLine.gif?raw=true)
 
 
+```
 
+```
 
 How to analyse the results in a tool like Tableau (This becomes critical with million row automation or test runs):
 
