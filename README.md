@@ -50,14 +50,19 @@ How it works:
  
 The following 2 step test example will login a list of users to an API server and then run a command (named refresh). It will use 10 concurrent threads and quit after 300 seconds.
 The program is normally run from the operating system (linux, osx) command line like this:
+
 goRunner -f userList.csv -configFile loginTest.ini -baseUrl https://aserver.com -c 10
 
 userList - The input file of test users to cycle through (can also read from STDIN)
+
 configFile - This defines the sequence of API calls to run for each user.
+
 baseUrl - The API or webserver to hit 
+
 c - # of concurrent threads to launch
 
-```Usage of ./goRunner:
+```
+Usage of ./goRunner:
   -baseUrl string
     	The host to test. Example https://test2.someserver.org
   -c int
