@@ -107,11 +107,12 @@ Usage of ./goRunner:
 goRunner can be run from a cron job scheduler, receive input from a file,  standard input, a pipe or even from a network queue (like HTTP).
  
  
-The goRunner program was designed to be a generic, multi-purpose load generation program. It's most common use now is as a load testing tool, and can also be used for nightly cleanup jobs and various scheduled bulk API processing. 
-
-The goRunner program is written in GO https://en.wikipedia.org/wiki/Go_(programming_language)
+It is a generic, multi-purpose load generation program. It's most common use is as a load testing tool but can also be used for nightly cleanup jobs and various scheduled bulk API processing. 
  
-Combined with a custom config file (known as an ini), the goRunner program is a generic, high performance load generation tool (or testing tool).
+Combined with a custom config file (known as an ini), the goRunner program is a generic, high performance load generation tool.
+
+
+Example:
 
 userList.csv  - A list of items to pass into the sequence as defined in the config file.
  
@@ -122,6 +123,7 @@ claire,suns41n3
  
 The configuration file containing our logic to run the test.
 
+```
 loginTest.ini
 [commandSequence]
 Sequence = login, refresh
@@ -140,7 +142,7 @@ ReqHeader1 = token: {%BTOKEN}
 ReqHeader2 = login: account{%KEY}
 SessionVar = ATOKEN Token: (.+)
 MustCapture = ATOKEN
- 
+```
  
 The simple example shown above, does a login and then makes a refresh call to an API server for each user passed into the tool. The actual capabilities of the goRunner program supports a much wider range of API interactions (from TCP to UDP protocol).
  
