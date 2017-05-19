@@ -26,13 +26,18 @@ How to run the test (To make your own custom tests, just create your own ini con
 ![Example3](https://github.com/adt-automation/goRunner/blob/master/img/goRunnerCommandLine.gif?raw=true)
 
 
+
+
 How to analyse the results in a tool like Tableau (This becomes critical with million row automation or test runs):
 
 ![Example3](https://github.com/adt-automation/goRunner/blob/master/img/goRunnerTestAnalysis.gif?raw=true)
 
 
+
+
 Example Tableau charts of large load test with the API calls/minute broken out by HTTP return code: 
 ![Example3](https://github.com/adt-automation/goRunner/blob/master/img/imageLoadTestMix.png?raw=true)
+
 
 
 
@@ -99,7 +104,7 @@ Usage of ./goRunner:
     	verbose debugging output flag
 ```     
 
-It can also be run from a cron job scheduler and can receive input from a file,  standard input, a pipe or even from a network queue (like HTTP).
+goRunner can be run from a cron job scheduler, receive input from a file,  standard input, a pipe or even from a network queue (like HTTP).
  
  
 The goRunner program was designed to be a generic, multi-purpose load generation program. It's most common use now is as a load testing tool, and can also be used for nightly cleanup jobs and various scheduled bulk API processing. 
