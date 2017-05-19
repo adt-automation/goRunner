@@ -39,3 +39,98 @@ Example Tableau charts of large load test with the API calls/minute broken out b
 Example TPS chart for the same load test:
 
 ![Example4](https://github.com/adt-automation/goRunner/blob/master/img/imageLoadtestTPS.png?raw=true)
+
+
+
+
+
+
+
+How it works:
+ 
+The following 2 step test example will login a list of users to an API server and then run a command (named refresh). It will use 10 concurrent threads and quit after 300 seconds.
+The program is normally run from the operating system (linux, osx) command line like this:
+goRunner -f userList.csv -configFile loginTest.ini -baseUrl https://aserver.com -c 10
+
+userList - The input file of test users to cycle through (can also read from STDIN)
+configFile - This defines the sequence of API calls to run for each user.
+baseUrl - The API or webserver to hit 
+c - # of concurrent threads to launch
+
+```Usage of ./goRunner:
+  -baseUrl string
+    	The host to test. Example https://test2.someserver.org
+  -c int
+    	Number of concurrent clients to launch. (default 100)
+  -configFile string
+    	Config file location (default "config.ini")
+  -cpuprofile string
+    	write cpu profile to file
+  -d string
+    	Output file delimeter (default ",")
+  -debug
+    	Show the body returned for the api call
+  -dump
+    	Show the HTTP dump for the api call
+  -f string
+    	Read input from file rather than stdin
+  -fh string
+    	Read input from csv file which has a header row
+  -hx
+    	Print output header row and exit
+  -keepalive
+    	enable/disable keepalive (default true)
+  -nh
+    	Suppress output header row. Ignored if hx is set
+  -nr
+    	Do not ramp up to total concurrent number of clients
+  -readtimeout int
+    	Timeout in seconds for the target API to send the first response byte. Default 30 seconds (default 30)
+  -t int
+    	Time in seconds for a timed load test
+  -targetTPS float
+    	The default max TPS is set to 1 million. Good luck reaching this :p (default 1e+06)
+  -verbose
+    	verbose debugging output flag
+```     
+
+It can also be run from a cron job scheduler and can receive input from a file,  standard input, a pipe or even from a network queue (like HTTP).
+ 
+ 
+The goRunner program was designed to be a generic, multi-purpose load generation program. It's most common use now is as a load testing tool, and can also be used for nightly cleanup jobs and various scheduled bulk API processing. 
+
+The goRunner program is written in GO https://en.wikipedia.org/wiki/Go_(programming_language)
+ 
+Combined with a custom config file (known as an ini), the goRunner program is a generic, high performance load generation tool (or testing tool).
+
+userList.csv  - A list of items to pass into the sequence as defined in the config file.
+ 
+john,pass123
+claire,suns41n3
+...
+ 
+ 
+The configuration file containing our logic to run the test.
+
+loginTest.ini
+[commandSequence]
+Sequence = login, refresh
+ 
+[command "login"]
+ReqUrl = /g/rest/test/login
+ReqHeader1 = login: login{%KEY}
+ReqHeader2 = password: pass{%VAL}
+ReqHeader3 = X-expires: 18000000
+SessionVar = BTOKEN Token: (.+)
+MustCapture = BTOKEN
+ 
+[command "refresh"]
+ReqUrl = /g/rest/test/Refresh
+ReqHeader1 = token: {%BTOKEN}
+ReqHeader2 = login: account{%KEY}
+SessionVar = ATOKEN Token: (.+)
+MustCapture = ATOKEN
+ 
+ 
+The simple example shown above, does a login and then makes a refresh call to an API server for each user passed into the tool. The actual capabilities of the goRunner program supports a much wider range of API interactions (from TCP to UDP protocol).
+ 
