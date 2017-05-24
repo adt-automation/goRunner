@@ -9,7 +9,7 @@ package main
 //nvram boot-args="serverperfmode=1"
 //shutdown -r now
 //launchctl limit maxfiles 999999
-//ulimit -n 999999
+//ulimit -n 999998
 
 import (
 	"bufio"
