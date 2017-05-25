@@ -8,7 +8,7 @@ package main
 //For a really big test, if you need a million open files on a mac:
 //nvram boot-args="serverperfmode=1"
 //shutdown -r now
-//launchctl limit maxfiles 999999
+//launchctl limit maxfiles 999990
 //ulimit -n 999998
 
 import (
