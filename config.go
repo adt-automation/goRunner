@@ -38,6 +38,7 @@ type Config struct {
 		MustCapture      string
 		ReqHeaders       []string
 		SessionVar       []string
+		//GrepVar          []string
 	}
 	CommandSequence struct {
 		Sequence   string

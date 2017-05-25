@@ -1,24 +1,22 @@
 package main
 
 import (
-	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/signal"
-	"regexp"
 	"strings"
 	"syscall"
 	"testing"
-	"time"
-
-	runner "github.com/adt-automation/goRunner/golib"
 )
 
 var port string
 
+//var baseUrl string
+
 func TestXxx(*testing.T) {
+	verbose = true
 	done := make(chan bool)
 	sigs := make(chan os.Signal, 1)
 
@@ -36,33 +34,63 @@ func TestXxx(*testing.T) {
 	http.HandleFunc("/reqapi/test/account/pass", HandleTicket)
 	http.HandleFunc("/reqapi/test/account/pass/", HandleTicket2)
 
-	runner.Delimeter = ","
-	baseUrl := "http://localhost:9009"
-	baseUrlFilter := regexp.MustCompile(baseUrl)
-	configuration := runner.NewConfiguration2("test_public.ini")
-	results := make(map[int]*runner.Result)
-	transportConfig := &tls.Config{InsecureSkipVerify: true} //allow wrong ssl certs
-	tr := &http.Transport{TLSClientConfig: transportConfig}
-	tr.ResponseHeaderTimeout = time.Second * time.Duration(30) //timeout in seconds
-	var stopTime time.Time                                     // client loops will work to the end of trafficChannel unless we explicitly init a stopTime
-	result := &runner.Result{}
-	results[0] = result
-	msDelay := 0
-	grep1, grep2 := "", ""
-	id := "123"
-	clientId := 0
-	var cookieMap = make(map[string]*http.Cookie)
-	var sessionVars = make(map[string]string)
-	overallStartTime := time.Now()
-	d := runner.Delimeter
-	fmt.Printf("startTime%vcommand%vnextCommand%vstep%vrequestType%vsessionKey%vsession%vgrep1%vgrep2%vid%vshortUrl%vstatusCode%vsessionVarsOk%vclientId%vbyteSize%vserver%vduration%vserverDuration\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d)
-	runner.DoReq(0, id, configuration, result, clientId, baseUrl, baseUrlFilter, msDelay, tr, cookieMap, sessionVars, grep1, grep2, stopTime, 0.0) //val,resp, err
-	message, exitCode := runner.GetResults(results, time.Now())
+	clients = 1
+	baseUrl = "http://localhost:9009"
+	// ---------------------------------------------------------------------------------------------
+	// Init runner
+	runner := NewRunner("test_public.ini")
+	// ---------------------------------------------------------------------------------------------
+	// Start clients
+	trafficChannel := make(chan string)
+	//	startTraffic(trafficChannel) //start reading on the channel
 
-	runner.PrintResults(message, overallStartTime)
+	runner.StartClients(trafficChannel)
 
-	//	<-done //close websrver
+	// ---------------------------------------------------------------------------------------------
+	// Output
 
+	runner.printSessionSummary()
+
+	PrintLogHeader(",", 1)
+	runner.PrintSessionLog() // ???
+
+	trafficChannel <- "1,2" //put work from the line we read to get nbDelimeters
+	close(trafficChannel)
+	// ---------------------------------------------------------------------------------------------
+	// Wait for clients to be done and exit
+	runner.Wait()
+	runner.Exit()
+
+	/*
+			baseUrlFilter := regexp.MustCompile(baseUrl)
+
+
+			transportConfig := &tls.Config{InsecureSkipVerify: true} //allow wrong ssl certs
+			tr := &http.Transport{TLSClientConfig: transportConfig}
+			tr.ResponseHeaderTimeout = time.Second * time.Duration(30) //timeout in seconds
+			var stopTime time.Time                                     // client loops will work to the end of trafficChannel unless we explicitly init a stopTime
+			result := &runner.Result{}
+			results[0] = result
+			msDelay := 0
+			grep1, grep2 := "", ""
+			id := "123"
+			clientId := 0
+			var cookieMap = make(map[string]*http.Cookie)
+			var sessionVars = make(map[string]string)
+			overallStartTime := time.Now()
+			d := runner.Delimeter
+			fmt.Printf("startTime%vcommand%vnextCommand%vstep%vrequestType%vsessionKey%vsession%vgrep1%vgrep2%vid%vshortUrl%vstatusCode%vsessionVarsOk%vclientId%vbyteSize%vserver%vduration%vserverDuration\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d)
+		//	runner.DoReq(0, id, configuration, result, clientId, baseUrl, baseUrlFilter, msDelay, tr, cookieMap, sessionVars, grep1, grep2, stopTime, 0.0) //val,resp, err
+
+
+	*/
+	//	results := make(map[int]*runner.Result)
+	//				result := &runner.Result{}
+	//			results[0] = result
+	//	message, exitCode := runner.GetResults(results, time.Now())
+
+	//	runner.PrintResults(message, overallStartTime)
+	exitCode := 0
 	os.Exit(int(exitCode))
 
 }
