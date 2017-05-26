@@ -1,3 +1,13 @@
+The goRunner tool takes csv input data along with a config file (describing API's to call), and while running the API calls, produces timestamped csv output data for reporting and analysis.
+
+goRunner was developed in the UNIX tradition to operate as a filter. It can be used in any pipeline connected to text stream inputs and outputs.
+```
+UNIX Philosophy
+Write programs that do one thing and do it well.
+Write programs to work together.
+Write programs to handle text streams, because that is a universal interface.
+```
+
 The API load testing tool is written in the GO programming language to take full advantage of today's modern computing architectures. It can efficiently use all CPU cores in the computer to simulate 100's of thousands of concurrent client connections to the server being tested. The test cases that drive the tool behavior are written using the well known ini file format and these test definition files can be created in any text editor. The test cases that drive the tool are represented mathematically as a finite state machine.
 
  
