@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"launchpad.net/xmlpath"
+	"gopkg.in/xmlpath.v2"
 	"os"
 	"sort"
 	"strings"

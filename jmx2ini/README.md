@@ -3,7 +3,7 @@ jmx2ini will be an executable that transforms JMeter JMX config files into goRun
 
 Build:
 ```
-go get launchpad.net/xmlpath
+go get gopkg.in/xmlpath.v2
 go build jmx2ini.go
 ```
 
