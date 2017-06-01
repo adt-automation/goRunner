@@ -109,6 +109,8 @@ func Landing(w http.ResponseWriter, r *http.Request) {
 func HandleToken(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	access_type := r.FormValue("access_type")
+	username, _, ok := r.BasicAuth()
+	authOk := ok == true && username == "ab4c4e00-d8a6-11e4-a96c-34fb509c20ca"
 
 	response := ""
 	switch access_type {
@@ -116,6 +118,10 @@ func HandleToken(w http.ResponseWriter, r *http.Request) {
 		response = "{\"access_token\":\"babd1aed-2e5b-40bb-a53f-d31d69d8571a\",\"refresh_token\":\"a77a8bfe-e9e6-4009-90f8-3e817685fed9\",\"token_type\":\"Carier\",\"expires_in\":3599,\"scope\":\"DEFAULT_SCOPE\"}"
 	case "refresh_token":
 		response = "{\"access_token\":\"babd1aed-2e5b-40bb-a53f-d31d69d8571a\",\"refresh_token\":\"a77a8bfe-e9e6-4009-90f8-3e817685fed9\",\"token_type\":\"Carier\",\"expires_in\":3599,\"scope\":\"DEFAULT_SCOPE\"}"
+	}
+
+	if !authOk {
+		w.WriteHeader(401)
 	}
 	fmt.Fprintf(w, "%v\n", response)
 }

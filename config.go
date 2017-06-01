@@ -36,6 +36,7 @@ type Config struct {
 		Md5Input         string
 		Base64Input      string
 		MustCapture      string
+		ResponseCode     string
 		ReqHeaders       []string
 		SessionVar       []string
 		//GrepVar          []string

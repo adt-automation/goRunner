@@ -708,7 +708,12 @@ func (runner *Runner) doLog(command string, config *Config, requestMethod string
 		runner.foundAllSessionVars = runner.foundAllSessionVars && foundSessionVars
 		continueSession = continueSession && foundMustCaptures
 
-		if httpResponse.StatusCode >= 200 && httpResponse.StatusCode < 400 { //was300
+		successStatus := httpResponse.StatusCode >= 200 && httpResponse.StatusCode < 400
+		expectedStatus := config.FieldInteger("ResponseCode", command)
+		if expectedStatus > 0 {
+			successStatus = httpResponse.StatusCode == expectedStatus
+		}
+		if successStatus {
 			atomic.AddInt32(&result.success, 1) //atomic++
 		} else {
 			atomic.AddInt32(&result.badFailed, 1) //atomic++
