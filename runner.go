@@ -141,10 +141,6 @@ func (runner *Runner) client(result *Result, trafficChannel chan string, clientI
 
 	msDelay := 0
 	for inputLine := range trafficChannel {
-		//read in the line. either a generated id or (TODO) a url
-		//		id := <-trafficChannel //urlTemplate : 100|10000|about
-
-		//Do Heartbeat
 		// cookieMap and sessionVars should start fresh every time we start a DoReq session
 		var cookieMap = make(map[string]*http.Cookie)
 		var sessionVars = make(map[string]string)
@@ -442,7 +438,6 @@ func (runner *Runner) tcpReq(inputLine string, config *Config, command string, s
 }
 
 func (runner *Runner) DoReq(stepCounter int, inputLine string, result *Result, clientId int, baseUrl string, delay int, cookieMap map[string]*http.Cookie, sessionVars map[string]string, commandTime float64) string {
-
 	if !runner.stopTime.IsZero() && time.Now().Add(time.Duration(delay)*time.Millisecond).After(runner.stopTime) {
 		return ""
 	}

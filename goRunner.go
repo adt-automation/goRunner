@@ -15,10 +15,12 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
 	"runtime/pprof"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -27,20 +29,22 @@ import (
 // -------------------------------------------------------------------------------------------------
 // Flags
 var (
-	clients     int
-	targetTPS   float64
-	baseUrl     string
-	configFile  string
-	inputFile   string
-	delimeter   string
-	headerExit  bool
-	noHeader    bool
-	cpuProfile  string
-	verbose     bool
-	keepAlive   bool
-	testTimeout time.Duration
-	readTimeout time.Duration
-	rampUp      time.Duration
+	clients        int
+	targetTPS      float64
+	baseUrl        string
+	configFile     string
+	inputFile      string
+	delimeter      string
+	headerExit     bool
+	noHeader       bool
+	cpuProfile     string
+	verbose        bool
+	keepAlive      bool
+	testTimeout    time.Duration
+	readTimeout    time.Duration
+	rampUp         time.Duration
+	listenPort     int
+	trafficChannel chan string
 )
 
 func init() {
@@ -58,6 +62,7 @@ func init() {
 	flag.StringVar(&cpuProfile, "cpuprofile", "", "write cpu profile to file")
 	flag.BoolVar(&verbose, "verbose", false, "verbose debugging output flag")
 	flag.BoolVar(&keepAlive, "keepalive", true, "enable/disable keepalive")
+	flag.IntVar(&listenPort, "p", 0, "Default off. Port to listen on for input (as opposed to STDIN). HTTP GET or POST calls accepted i.e http://localhost/john,pass1\nor\ncurl POST http://localhost -d 'john,pass1\ndoug,pass2\n'")
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -73,8 +78,6 @@ func init() {
 
 	flag.Usage = func() {
 		defaultUsage()
-		// fmt.Fprintf(os.Stderr, "\n\n")
-		// PrintLogHeader(delimeter)
 	}
 }
 
@@ -129,44 +132,53 @@ func main() {
 
 	// ---------------------------------------------------------------------------------------------
 	// Start clients
-	trafficChannel := make(chan string)
+	trafficChannel = make(chan string)
 	//	startTraffic(trafficChannel) //start reading on the channel
 	runner.StartClients(trafficChannel)
 
 	// ---------------------------------------------------------------------------------------------
 	// Read input from file or stdin
-	scanner := bufio.NewScanner(os.Stdin)
-	if len(inputFile) > 0 {
-		file, err := os.Open(inputFile)
-		if err != nil {
-			flagError(err.Error())
+
+	if listenPort > 0 {
+		listenPortString := strconv.Itoa(listenPort)
+
+		http.HandleFunc("/", HandleInputArgs)
+		http.ListenAndServe(":"+listenPortString, nil)
+	} else {
+
+		scanner := bufio.NewScanner(os.Stdin)
+		if len(inputFile) > 0 {
+			file, err := os.Open(inputFile)
+			if err != nil {
+				flagError(err.Error())
+			}
+			defer file.Close()
+			scanner = bufio.NewScanner(file)
 		}
-		defer file.Close()
-		scanner = bufio.NewScanner(file)
-	}
-
-	scanner.Scan()
-	inputLine := scanner.Text()
-	nbDelimeters := strings.Count(inputLine, delimeter)
-
-	// ---------------------------------------------------------------------------------------------
-	// Output
-	runner.printSessionSummary()
-	if !noHeader {
-		PrintLogHeader(delimeter, nbDelimeters+1)
-		runner.PrintSessionLog() // ???
-	}
-
-	trafficChannel <- inputLine //put work from the line we read to get nbDelimeters
-
-	for scanner.Scan() {
-		inputLine = scanner.Text()
-		if strings.Count(inputLine, delimeter) != nbDelimeters {
-			fmt.Fprintf(os.Stderr, "\n/!\\ input lines must have same number of fields /!\\\n")
-			runner.Exit()
+		// ---------------------------------------------------------------------------------------------
+		// Output
+		nbDelimeters := 0
+		firstTime := true
+		for scanner.Scan() {
+			inputLine := scanner.Text()
+			if firstTime {
+				firstTime = false
+				nbDelimeters = strings.Count(inputLine, delimeter)
+				runner.printSessionSummary()
+				if !noHeader {
+					PrintLogHeader(delimeter, nbDelimeters+1)
+					runner.PrintSessionLog() // ???
+				}
+			}
+			if strings.Count(inputLine, delimeter) != nbDelimeters {
+				fmt.Fprintf(os.Stderr, "\n/!\\ input lines must have same number of fields /!\\\n")
+				runner.Exit()
+			}
+			if len(inputLine) == 0 {
+				break //quit when we get an empty input line
+			}
+			trafficChannel <- inputLine
 		}
-
-		trafficChannel <- inputLine //put work into the channel from Stdin
 	}
 	close(trafficChannel)
 
@@ -175,6 +187,14 @@ func main() {
 	runner.Wait()
 	runner.Exit()
 }
+func HandleInputArgs(w http.ResponseWriter, r *http.Request) {
+	scanner := bufio.NewScanner(r.Body)
+	for scanner.Scan() {
+		inputLine := scanner.Text()
+		trafficChannel <- inputLine
+	}
+	w.WriteHeader(200)
+}
 
 func flagError(err string) {
 	flag.Usage()
@@ -182,20 +202,6 @@ func flagError(err string) {
 	os.Exit(1)
 }
 
-/*
-func generateInput() chan string {
-	lines := make(chan string)
-	go func() {
-		scanner := bufio.NewScanner(os.Stdin)
-		for scanner.Scan() {
-			lines <- scanner.Text()
-		}
-		//scanner.Err()
-		fmt.Printf("scanner done:\n\n")
-	}()
-	return lines
-}
-*/
 //func noRedirect(req *http.Request, via []*http.Request) error {
 //	return errors.New("Don't redirect!")
 //}
