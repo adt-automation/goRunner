@@ -2,7 +2,6 @@ The goRunner tool can read in csv data to drive a sequence of API calls. These c
 
 goRunner was developed in the UNIX tradition to operate as a filter. It can be used in any pipeline connected to text stream inputs and outputs.
 ```
-UNIX Philosophy
 Write programs that do one thing and do it well.
 Write programs to work together.
 Write programs to handle text streams, because that is a universal interface.
@@ -163,3 +162,39 @@ MustCapture = ATOKEN
  
 The simple example shown above, does a login and then makes a refresh call to an API server for each user passed into the tool. The actual capabilities of the goRunner program supports a much wider range of API interactions (from TCP to UDP protocol).
  
+To setup goRunner as a web service to read HTTP post command from a port:
+```
+./goRunner -configFile someTest.ini -c 1 -baseUrl https://localhost -p 8081
+```
+Then from another window:
+```
+curl -v http://localhost:8081  --data 1234
+```
+
+Or for multiple intput rows:
+```
+%cat file.txt
+doug,pass1
+doug,pass2
+john,pass3
+
+%curl -v http://localhost:8081  --data-binary @file.txt
+
+* Rebuilt URL to: http://localhost:8081/
+*   Trying ::1...
+* Connected to localhost (::1) port 8081 (#0)
+> POST / HTTP/1.1
+> Host: localhost:8081
+> User-Agent: curl/7.49.1
+> Accept: */*
+> Content-Length: 33
+> Content-Type: application/x-www-form-urlencoded
+>
+* upload completely sent off: 33 out of 33 bytes
+< HTTP/1.1 200 OK
+< Date: Fri, 02 Jun 2017 15:31:44 GMT
+< Content-Length: 0
+< Content-Type: text/plain; charset=utf-8
+<
+* Connection #0 to host localhost left intact
+```
