@@ -100,6 +100,9 @@ func NewRunner(configFile string) *Runner {
 			s := strings.SplitN(session_var, " ", 2) // s = ['CUSTNO', '<extId>{%VAL}</extId>']
 			InitMacros(cmd, s[1])
 		}
+		for _, req_hdr := range config.Command[cmd].ReqHeaders {
+			InitMacros(cmd, req_hdr)
+		}
 		InitMd5Macro(cmd, config.FieldString("Md5Input", cmd))
 		InitBase64Macro(cmd, config.FieldString("Base64Input", cmd))
 	}
