@@ -33,6 +33,8 @@ func TestXxx(*testing.T) {
 	http.HandleFunc("/reqapi/check/token", HandleToken)
 	http.HandleFunc("/reqapi/test/account/pass", HandleTicket)
 	http.HandleFunc("/reqapi/test/account/pass/", HandleTicket2)
+	http.HandleFunc("/reqapi/test/shellVar", HandleShellVar)
+	os.Setenv("shellVar", "test123")
 
 	clients = 1
 	baseUrl = "http://localhost:9009"
@@ -139,4 +141,8 @@ func HandleTicket(w http.ResponseWriter, r *http.Request) {
 func HandleTicket2(w http.ResponseWriter, r *http.Request) {
 	pathArr := strings.SplitN(r.URL.RequestURI()[1:] /*trim the first slash*/, "/", -1)
 	fmt.Fprintf(w, "PATH=%v\n", pathArr[4])
+}
+func HandleShellVar(w http.ResponseWriter, r *http.Request) {
+	shellVar := r.URL.Query().Get("shellVar")
+	fmt.Fprintf(w, "%v\n", shellVar)
 }
