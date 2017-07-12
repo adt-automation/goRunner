@@ -234,9 +234,11 @@ func (runner *Runner) httpReq(inputLine string, config *Config, command string, 
 	}
 
 	// default headers here
-	for _, hdr := range config.Command["default"].ReqHeaders {
-		str := strings.Split(hdr, ":")
-		req.Header.Set(str[0], strings.TrimSpace(str[1]))
+	if config.Command["default"] != nil {
+		for _, hdr := range config.Command["default"].ReqHeaders {
+			str := strings.Split(hdr, ":")
+			req.Header.Set(str[0], strings.TrimSpace(str[1]))
+		}
 	}
 	// command-specific headers here
 	for _, hdr := range config.Command[command].ReqHeaders {
