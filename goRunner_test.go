@@ -34,6 +34,7 @@ func TestXxx(*testing.T) {
 	http.HandleFunc("/reqapi/test/account/pass", HandleTicket)
 	http.HandleFunc("/reqapi/test/account/pass/", HandleTicket2)
 	http.HandleFunc("/reqapi/test/shellVar", HandleShellVar)
+	http.HandleFunc("/reqapi/test/upload", Landing)
 	os.Setenv("shellVar", "test123")
 
 	clients = 1
