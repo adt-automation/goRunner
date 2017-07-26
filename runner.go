@@ -474,9 +474,10 @@ func (runner *Runner) DoReq(stepCounter int, inputLine string, result *Result, c
 			shortUrl = (runner.reUrlFilter).ReplaceAllString(baseUrl, "")
 		} else {
 			httpRequest, httpResp, httpError = runner.httpReq(inputLine, runner.config, command, baseUrl, cookieMap, sessionVars, startTime)
-			shortUrl = (runner.reUrlFilter).ReplaceAllString(httpRequest.URL.String(), "")
-			requestType = httpRequest.Method
-
+			if httpRequest != nil {
+				shortUrl = (runner.reUrlFilter).ReplaceAllString(httpRequest.URL.String(), "")
+				requestType = httpRequest.Method
+			}
 		}
 
 		// -----------------------------------------------------------------------------------------
