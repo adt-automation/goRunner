@@ -103,6 +103,7 @@ func NewRunner(configFile string) *Runner {
 		for _, req_hdr := range config.Command[cmd].ReqHeaders {
 			InitMacros(cmd, req_hdr)
 		}
+		InitPksMacro(cmd, config.FieldString("PKSInput", cmd))
 		InitMd5Macro(cmd, config.FieldString("Md5Input", cmd))
 		InitBase64Macro(cmd, config.FieldString("Base64Input", cmd))
 	}
@@ -623,6 +624,7 @@ func (runner *Runner) findSessionVars(command string, config *Config, input stri
 			}
 		}
 	}
+
 	return foundSessionVars, foundMustCaptures
 
 }
