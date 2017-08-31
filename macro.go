@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/md5"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -18,6 +19,7 @@ type UnixtimeMacro struct {
 	format   string
 }
 
+var PksInputs map[string]string = make(map[string]string)
 var Md5Inputs map[string]string = make(map[string]string)
 var Base64Inputs map[string]string = make(map[string]string)
 var UnixtimeMacros map[string]UnixtimeMacro
@@ -25,6 +27,7 @@ var PrintTimeMacros map[string]UnixtimeMacro
 var CommandMacros = make(map[string][]string)
 var Md5Macros = make(map[string][]string)
 var Base64Macros = make(map[string][]string)
+var PksMacros = make(map[string][]string)
 
 var reArgs = regexp.MustCompile("{%ARGS\\[(\\d+)\\]}")
 
@@ -153,6 +156,30 @@ func InitUnixtimeMacros() {
 	}
 }
 
+func addPksMacro(cmd string, macro string) {
+	if !arrayContains(PksMacros[cmd], macro) {
+		PksMacros[cmd] = append(PksMacros[cmd], macro)
+	}
+}
+
+func InitPksMacro(cmd string, pksInput string) {
+	if len(pksInput) == 0 {
+		return
+	}
+	PksInputs[cmd] = pksInput
+	PksMacros[cmd] = make([]string, 0)
+
+	rx, _ := regexp.Compile("\\{%.*?\\}")
+	rxenv, _ := regexp.Compile("\\{\\$.*?\\}")
+
+	for _, macro := range rx.FindAllString(pksInput, -1) {
+		addPksMacro(cmd, macro)
+	}
+	for _, macro := range rxenv.FindAllString(pksInput, -1) {
+		addPksMacro(cmd, macro)
+	}
+}
+
 func addMd5Macro(cmd string, macro string) {
 	if !arrayContains(Md5Macros[cmd], macro) {
 		Md5Macros[cmd] = append(Md5Macros[cmd], macro)
@@ -233,6 +260,26 @@ func _runnerMacro(command string, declaration string, inputData string, sessionV
 			testMd5 = strings.Replace(testMd5, macro, runnerMacro(command, macro, inputData, sessionVars, reqTime), -1)
 		}
 		return strings.ToUpper(fmt.Sprintf("%x", md5.Sum([]byte(testMd5))))
+	} else if declaration == "{%PKSENC}" {
+		pksInput := PksInputs[command]
+		for _, macro := range PksMacros[command] {
+			pksInput = strings.Replace(pksInput, macro, runnerMacro(command, macro, inputData, sessionVars, reqTime), -1)
+		}
+
+		// that's dirty, waiting for proper func management
+		inputs := strings.Split(pksInput, ",")
+		if len(inputs) != 3 {
+			return "invalid PKSInput format. Must be pwd,key,keyexp"
+		}
+		encryptor, err := NewPKSEncryptor(inputs[1], inputs[2], inputs[0])
+		if err != nil {
+			return err.Error()
+		}
+		res, err := encryptor.Encrypt()
+		if err != nil {
+			return err.Error()
+		}
+		return hex.EncodeToString(res)
 	} else if declaration == "{%BASE64ENC}" {
 		base64In := Base64Inputs[command]
 		for _, macro := range Base64Macros[command] {

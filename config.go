@@ -34,6 +34,7 @@ type Config struct {
 		MsecDelay        string
 		MsecRepeat       string
 		Md5Input         string
+		PKSInput         string
 		Base64Input      string
 		MustCapture      string
 		ResponseCode     string

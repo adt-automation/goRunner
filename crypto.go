@@ -4,14 +4,47 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/rand"
+	"crypto/rsa"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"log"
+	"math/big"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// -------------------------------------------------------------------------------------------------
+// PKS Encryption
+type PKSEncryptor struct {
+	toEncrypt []byte
+	key       rsa.PublicKey
+}
+
+func NewPKSEncryptor(modulus string, exp string, pwd string) (*PKSEncryptor, error) {
+
+	N := big.NewInt(0)
+	_, ok := N.SetString(modulus, 16)
+	if !ok {
+		return nil, errors.New("couldn't parse modulus")
+	}
+	E, err := strconv.ParseInt(exp, 16, 64)
+	// E, err := strconv.Atoi(exp)
+	if err != nil {
+		return nil, err
+	}
+	toReturn := &PKSEncryptor{
+		toEncrypt: []byte(pwd),
+		key:       rsa.PublicKey{N: N, E: int(E)},
+	}
+	return toReturn, nil
+}
+
+func (p *PKSEncryptor) Encrypt() ([]byte, error) {
+	return rsa.EncryptPKCS1v15(rand.Reader, &p.key, p.toEncrypt)
+}
 
 func tsByteBuffer(timestamp int64) *bytes.Buffer {
 	buf := new(bytes.Buffer)
