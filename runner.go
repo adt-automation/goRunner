@@ -619,8 +619,8 @@ func (runner *Runner) findSessionVars(command string, config *Config, input stri
 	for _, session_var := range config.Command[command].SessionVar {
 		s := strings.SplitN(session_var, " ", 2) // s = ['XTOKEN', 'detail="(.+)"']
 		svar := s[0]
-		sgrep := RunnerMacrosRegexp(command, inputLine, sessionVars, startTime, s[1]) //do the string substitition from {%x} or {$x} to VALUE in the hashtable
-		regex := regexp.MustCompile(sgrep)                                            // /detail="(.+)"/
+		sgrep := RunnerMacrosRegexp(command, inputLine, sessionVars, startTime, s[1])
+		regex := regexp.MustCompile(sgrep) // /detail="(.+)"/
 		if len(regex.String()) <= 0 {
 			continue
 		}
@@ -658,7 +658,7 @@ func (runner *Runner) findSessionVars(command string, config *Config, input stri
 
 	return foundSessionVars, foundMustCaptures
 
-} //end findSessionVars
+}
 
 func (runner *Runner) findFuncVars(command string, config *Config, sessionVars map[string]string) {
 	// set any session vars listed for current command, e.g. SessionVar = XTOKEN detail="(.+)"
