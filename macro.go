@@ -179,24 +179,6 @@ func InitPksMacro(cmd string, pksInput string) {
 		addPksMacro(cmd, macro)
 	}
 } //InitPKSMacro
-/*
-func InitFuncMacro(cmd string, funcInput string) {
-	if len(funcInput) == 0 {
-		return
-	}
-	PksMacros[cmd] = make([]string, 0)
-
-	rx, _ := regexp.Compile("\\{%.*?\\}")
-	rxenv, _ := regexp.Compile("\\{\\$.*?\\}")
-
-	for _, macro := range rx.FindAllString(funcInput, -1) {
-		addPksMacro(cmd, macro)
-	}
-	for _, macro := range rxenv.FindAllString(funcInput, -1) {
-		addPksMacro(cmd, macro)
-	}
-} //InitFuncMacro
-*/
 func addMd5Macro(cmd string, macro string) {
 	if !arrayContains(Md5Macros[cmd], macro) {
 		Md5Macros[cmd] = append(Md5Macros[cmd], macro)
