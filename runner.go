@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -19,6 +20,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/robertkrimen/otto"
 )
 
 // -------------------------------------------------------------------------------------------------
@@ -188,6 +191,29 @@ func (runner *Runner) EstimateSessionTime() time.Duration {
 	return dur
 }
 
+func (runner *Runner) doFunc(funcName string, args []string) string {
+	//this allows custom javascript functions to be created by the tester
+	vm := otto.New()
+	upToDot := strings.LastIndex(configFile, ".") //config.ini
+	jsFilename := configFile[:upToDot] + ".js"    //config.js
+	dat, err := ioutil.ReadFile(jsFilename)       //the javascript functions available are in this file
+	if err != nil {
+		println("Can't open file", jsFilename)
+		os.Exit(1)
+	}
+	if _, err := vm.Run(dat); err != nil { //load the javascript functions into memory
+		panic(err)
+	}
+	b := make([]interface{}, len(args)) //convert []string to []interface {} so we can send as varadic b...
+	for i := range args {
+		b[i] = args[i]
+	}
+	r, err := vm.Call(funcName, nil, b...)
+	if err != nil {
+		panic(err)
+	}
+	return r.String()
+}
 func (runner *Runner) httpReq(inputLine string, config *Config, command string, baseUrl string, cookieMap map[string]*http.Cookie, sessionVars map[string]string, reqTime time.Time) (*http.Request, *http.Response, error) {
 
 	//this is where all the good stuff happens
@@ -202,9 +228,14 @@ func (runner *Runner) httpReq(inputLine string, config *Config, command string, 
 		urlx = baseUrl + urlx
 	}
 
-	body = RunnerMacros(command, inputLine, sessionVars, reqTime, body)
-	urlx = RunnerMacros(command, inputLine, sessionVars, reqTime, urlx)
+	//findFuncVars will look for Func's
+	//then do string replace on Funcs
+	//and process Func and then assign to Session var
+	runner.findFuncVars(command, config, sessionVars) //run javascript function macros and set any results as sessionVars
 
+	//end javascript function macros
+	body = RunnerMacros(command, inputLine, sessionVars, reqTime, body) //string replace the {%x} and {$x} macros with real values before HTTPRoundTrip call
+	urlx = RunnerMacros(command, inputLine, sessionVars, reqTime, urlx)
 	reqReader := io.Reader(bytes.NewReader([]byte(body)))
 	requestContentSize := int64(len(body))
 
@@ -309,7 +340,7 @@ func (runner *Runner) httpReq(inputLine string, config *Config, command string, 
 		}
 	}
 
-	resp, err := httpRoundTrip(runner.httpTransport, req)
+	resp, err := httpRoundTrip(runner.httpTransport, req) //actually make the HTTP request here
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s %s ERROR %s: %v\n", command, inputLine, time.Now(), err.Error())
 	} else if verbose {
@@ -588,8 +619,8 @@ func (runner *Runner) findSessionVars(command string, config *Config, input stri
 	for _, session_var := range config.Command[command].SessionVar {
 		s := strings.SplitN(session_var, " ", 2) // s = ['XTOKEN', 'detail="(.+)"']
 		svar := s[0]
-		sgrep := RunnerMacrosRegexp(command, inputLine, sessionVars, startTime, s[1])
-		regex := regexp.MustCompile(sgrep) // /detail="(.+)"/
+		sgrep := RunnerMacrosRegexp(command, inputLine, sessionVars, startTime, s[1]) //do the string substitition from {%x} or {$x} to VALUE in the hashtable
+		regex := regexp.MustCompile(sgrep)                                            // /detail="(.+)"/
 		if len(regex.String()) <= 0 {
 			continue
 		}
@@ -627,7 +658,22 @@ func (runner *Runner) findSessionVars(command string, config *Config, input stri
 
 	return foundSessionVars, foundMustCaptures
 
-}
+} //end findSessionVars
+
+func (runner *Runner) findFuncVars(command string, config *Config, sessionVars map[string]string) {
+	// set any session vars listed for current command, e.g. SessionVar = XTOKEN detail="(.+)"
+	for _, func_var := range config.Command[command].FuncVar {
+		s := strings.SplitN(func_var, " ", 2) // s = ['ADDTEST', 'add(1,2,3)"']
+		svar := s[0]                          //ADDTEST
+		startArgs := strings.Index(s[1], "(") //WARNING: this assumes that () characters are not part of the input arguments to the js func macro
+		endArgs := strings.Index(s[1], ")")
+		sfunc := s[1][:startArgs]            //add
+		sargs := s[1][startArgs+1 : endArgs] //1,2,3
+		answer := runner.doFunc(sfunc, strings.Split(sargs, ","))
+		sessionVars[svar] = answer // ADDTEST = 6
+	}
+	return
+} //end findFuncVars
 
 func (runner *Runner) doLog(command string, config *Config, requestMethod string, tcpResponse []byte, httpResponse *http.Response, result *Result, err error, startTime time.Time, shortUrl string, inputLine string, clientId int, stepCounter int, lastSession string, sessionVars map[string]string) (string, bool) {
 

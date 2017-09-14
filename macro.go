@@ -169,8 +169,8 @@ func InitPksMacro(cmd string, pksInput string) {
 	PksInputs[cmd] = pksInput
 	PksMacros[cmd] = make([]string, 0)
 
-	rx, _ := regexp.Compile("\\{%.*?\\}")
-	rxenv, _ := regexp.Compile("\\{\\$.*?\\}")
+	rx, _ := regexp.Compile("\\{%.*?\\}")      //comment needed
+	rxenv, _ := regexp.Compile("\\{\\$.*?\\}") //comment needed
 
 	for _, macro := range rx.FindAllString(pksInput, -1) {
 		addPksMacro(cmd, macro)
@@ -178,8 +178,25 @@ func InitPksMacro(cmd string, pksInput string) {
 	for _, macro := range rxenv.FindAllString(pksInput, -1) {
 		addPksMacro(cmd, macro)
 	}
-}
+} //InitPKSMacro
+/*
+func InitFuncMacro(cmd string, funcInput string) {
+	if len(funcInput) == 0 {
+		return
+	}
+	PksMacros[cmd] = make([]string, 0)
 
+	rx, _ := regexp.Compile("\\{%.*?\\}")
+	rxenv, _ := regexp.Compile("\\{\\$.*?\\}")
+
+	for _, macro := range rx.FindAllString(funcInput, -1) {
+		addPksMacro(cmd, macro)
+	}
+	for _, macro := range rxenv.FindAllString(funcInput, -1) {
+		addPksMacro(cmd, macro)
+	}
+} //InitFuncMacro
+*/
 func addMd5Macro(cmd string, macro string) {
 	if !arrayContains(Md5Macros[cmd], macro) {
 		Md5Macros[cmd] = append(Md5Macros[cmd], macro)
@@ -234,11 +251,11 @@ func _runnerMacro(command string, declaration string, inputData string, sessionV
 	if !(strings.HasPrefix(declaration, "{%") || strings.HasPrefix(declaration, "{$")) || !strings.HasSuffix(declaration, "}") {
 		return ""
 	}
-
+	//This func processes the token and returns the string
 	uxt, ok := UnixtimeMacros[declaration]
 	prt, ok1 := PrintTimeMacros[declaration]
 	if ok {
-		timestamp := reqTime.Add(uxt.duration).UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+		timestamp := reqTime.Add(uxt.duration).UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond)) //why not use now instead of reqTime?
 		rx, _ := regexp.Compile("%(\\d+)x")
 		fmtdigits := rx.FindStringSubmatch(uxt.format)
 		if len(fmtdigits) == 0 {
@@ -311,14 +328,14 @@ func _runnerMacro(command string, declaration string, inputData string, sessionV
 		}
 	}
 	return ""
-}
+} //_runnerMacro replaces the variable reference like {%X} or {$X} with the value stored in the hash table
 
 func runnerMacro(command string, declaration string, inputData string, sessionVars map[string]string, reqTime time.Time) string {
 	if !(strings.HasPrefix(declaration, "{%") || strings.HasPrefix(declaration, "{$")) || !strings.HasSuffix(declaration, "}") {
 		return ""
-	}
+	} //This functions gets passed in a {%X} and {$X} variable reference, looks it up the hash table and returns the string value
 
-	ssrx, _ := regexp.Compile("\\[(\\d+):(\\d+)\\]}")
+	ssrx, _ := regexp.Compile("\\[(\\d+):(\\d+)\\]}") //comment needed
 	declSubstr := ssrx.FindStringSubmatch(declaration)
 	if len(declSubstr) == 0 {
 		return _runnerMacro(command, declaration, inputData, sessionVars, reqTime)

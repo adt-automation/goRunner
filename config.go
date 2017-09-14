@@ -40,6 +40,7 @@ type Config struct {
 		ResponseCode     string
 		ReqHeaders       []string
 		SessionVar       []string
+		FuncVar          []string
 		//GrepVar          []string
 	}
 	CommandSequence struct {
