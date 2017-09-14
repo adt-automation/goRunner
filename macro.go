@@ -178,7 +178,7 @@ func InitPksMacro(cmd string, pksInput string) {
 	for _, macro := range rxenv.FindAllString(pksInput, -1) {
 		addPksMacro(cmd, macro)
 	}
-} //InitPKSMacro
+}
 func addMd5Macro(cmd string, macro string) {
 	if !arrayContains(Md5Macros[cmd], macro) {
 		Md5Macros[cmd] = append(Md5Macros[cmd], macro)
@@ -233,7 +233,6 @@ func _runnerMacro(command string, declaration string, inputData string, sessionV
 	if !(strings.HasPrefix(declaration, "{%") || strings.HasPrefix(declaration, "{$")) || !strings.HasSuffix(declaration, "}") {
 		return ""
 	}
-	//This func processes the token and returns the string
 	uxt, ok := UnixtimeMacros[declaration]
 	prt, ok1 := PrintTimeMacros[declaration]
 	if ok {
@@ -310,16 +309,17 @@ func _runnerMacro(command string, declaration string, inputData string, sessionV
 		}
 	}
 	return ""
-} //_runnerMacro replaces the variable reference like {%X} or {$X} with the value stored in the hash table
+}
 
 func runnerMacro(command string, declaration string, inputData string, sessionVars map[string]string, reqTime time.Time) string {
 	if !(strings.HasPrefix(declaration, "{%") || strings.HasPrefix(declaration, "{$")) || !strings.HasSuffix(declaration, "}") {
 		return ""
-	} //This functions gets passed in a {%X} and {$X} variable reference, looks it up the hash table and returns the string value
+	}
 
 	ssrx, _ := regexp.Compile("\\[(\\d+):(\\d+)\\]}")
 	declSubstr := ssrx.FindStringSubmatch(declaration)
 	if len(declSubstr) == 0 {
+		//This function gets passed in a {%X} and {$X} variable reference (i.e. declaration), looks it up the hash table and returns the string value
 		return _runnerMacro(command, declaration, inputData, sessionVars, reqTime)
 	} else {
 		declaration = strings.Replace(declaration, declSubstr[0], "}", 1)
