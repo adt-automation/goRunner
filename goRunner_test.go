@@ -35,7 +35,7 @@ func TestXxx(*testing.T) {
 	http.HandleFunc("/reqapi/test/account/pass/", HandleTicket2)
 	http.HandleFunc("/reqapi/test/shellVar", HandleShellVar)
 	http.HandleFunc("/reqapi/test/upload", Landing)
-	http.HandleFunc("/reqapi/test/js", HandleJavascriptFunction)
+	http.HandleFunc("/general", General)
 	os.Setenv("shellVar", "test123")
 
 	clients = 1
@@ -148,12 +148,12 @@ func HandleShellVar(w http.ResponseWriter, r *http.Request) {
 	shellVar := r.URL.Query().Get("shellVar")
 	fmt.Fprintf(w, "%v\n", shellVar)
 }
-func HandleJavascriptFunction(w http.ResponseWriter, r *http.Request) {
+func General(w http.ResponseWriter, r *http.Request) {
 	testAnswer := r.URL.Query().Get("testAnswer")     //add(2,3) = 5
 	actualAnswer := r.URL.Query().Get("actualAnswer") //  5
 	if testAnswer == actualAnswer {
-		fmt.Fprintf(w, "Success Add=%v\n", testAnswer)
+		fmt.Fprintf(w, "Success %v\n", testAnswer)
 	} else {
-		fmt.Fprintf(w, "Failure Err=%v\n", testAnswer)
+		fmt.Fprintf(w, "Failure %v\n", testAnswer)
 	}
 }
