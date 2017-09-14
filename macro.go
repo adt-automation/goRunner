@@ -169,8 +169,8 @@ func InitPksMacro(cmd string, pksInput string) {
 	PksInputs[cmd] = pksInput
 	PksMacros[cmd] = make([]string, 0)
 
-	rx, _ := regexp.Compile("\\{%.*?\\}")      //comment needed
-	rxenv, _ := regexp.Compile("\\{\\$.*?\\}") //comment needed
+	rx, _ := regexp.Compile("\\{%.*?\\}")
+	rxenv, _ := regexp.Compile("\\{\\$.*?\\}")
 
 	for _, macro := range rx.FindAllString(pksInput, -1) {
 		addPksMacro(cmd, macro)
@@ -335,7 +335,7 @@ func runnerMacro(command string, declaration string, inputData string, sessionVa
 		return ""
 	} //This functions gets passed in a {%X} and {$X} variable reference, looks it up the hash table and returns the string value
 
-	ssrx, _ := regexp.Compile("\\[(\\d+):(\\d+)\\]}") //comment needed
+	ssrx, _ := regexp.Compile("\\[(\\d+):(\\d+)\\]}")
 	declSubstr := ssrx.FindStringSubmatch(declaration)
 	if len(declSubstr) == 0 {
 		return _runnerMacro(command, declaration, inputData, sessionVars, reqTime)
