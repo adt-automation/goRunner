@@ -179,6 +179,7 @@ func InitPksMacro(cmd string, pksInput string) {
 		addPksMacro(cmd, macro)
 	}
 }
+
 func addMd5Macro(cmd string, macro string) {
 	if !arrayContains(Md5Macros[cmd], macro) {
 		Md5Macros[cmd] = append(Md5Macros[cmd], macro)
@@ -233,10 +234,11 @@ func _runnerMacro(command string, declaration string, inputData string, sessionV
 	if !(strings.HasPrefix(declaration, "{%") || strings.HasPrefix(declaration, "{$")) || !strings.HasSuffix(declaration, "}") {
 		return ""
 	}
+
 	uxt, ok := UnixtimeMacros[declaration]
 	prt, ok1 := PrintTimeMacros[declaration]
 	if ok {
-		timestamp := reqTime.Add(uxt.duration).UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond)) //why not use now instead of reqTime?
+		timestamp := reqTime.Add(uxt.duration).UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 		rx, _ := regexp.Compile("%(\\d+)x")
 		fmtdigits := rx.FindStringSubmatch(uxt.format)
 		if len(fmtdigits) == 0 {
