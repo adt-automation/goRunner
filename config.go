@@ -47,6 +47,9 @@ type Config struct {
 		Sequence   string
 		SessionLog string
 	}
+	UserFunctions struct {
+		Import []string
+	}
 	FileName string
 }
 

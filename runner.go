@@ -194,16 +194,19 @@ func (runner *Runner) EstimateSessionTime() time.Duration {
 func (runner *Runner) doFunc(funcName string, args []string) string {
 	//this allows custom javascript functions to be created by the tester
 	vm := otto.New()
-	upToDot := strings.LastIndex(configFile, ".") //config.ini
-	jsFilename := configFile[:upToDot] + ".js"    //config.js
-	dat, err := ioutil.ReadFile(jsFilename)       //the javascript functions available are in this file
-	if err != nil {
-		println("Can't open file", jsFilename)
-		os.Exit(1)
+
+	for _, importPath := range runner.config.UserFunctions.Import {
+		dat, err := ioutil.ReadFile(importPath) //the javascript functions available are in this file
+		if err != nil {
+			println("Can't open file", importPath)
+			os.Exit(1)
+		}
+		if _, err := vm.Run(dat); err != nil { //load the javascript functions into memory
+			panic(err)
+		}
+
 	}
-	if _, err := vm.Run(dat); err != nil { //load the javascript functions into memory
-		panic(err)
-	}
+
 	b := make([]interface{}, len(args)) //convert []string to []interface {} so we can send as varadic b...
 	for i := range args {
 		b[i] = args[i]
@@ -213,6 +216,7 @@ func (runner *Runner) doFunc(funcName string, args []string) string {
 		panic(err)
 	}
 	return r.String()
+
 }
 func (runner *Runner) httpReq(inputLine string, config *Config, command string, baseUrl string, cookieMap map[string]*http.Cookie, sessionVars map[string]string, reqTime time.Time) (*http.Request, *http.Response, error) {
 
