@@ -211,7 +211,9 @@ func (runner *Runner) doFunc(funcName string, args []string) string {
 	for i := range args {
 		b[i] = args[i]
 	}
+	fmt.Println("BEFORE CALL")
 	r, err := vm.Call(funcName, nil, b...)
+	fmt.Println("AFTER CALL")
 	if err != nil {
 		panic(err)
 	}
