@@ -40,11 +40,15 @@ type Config struct {
 		ResponseCode     string
 		ReqHeaders       []string
 		SessionVar       []string
+		FuncVar          []string
 		//GrepVar          []string
 	}
 	CommandSequence struct {
 		Sequence   string
 		SessionLog string
+	}
+	UserFunctions struct {
+		Import []string
 	}
 	FileName string
 }

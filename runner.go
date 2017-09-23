@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -19,6 +20,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/robertkrimen/otto"
+	//try v8 engine
 )
 
 // -------------------------------------------------------------------------------------------------
@@ -92,10 +96,15 @@ func NewRunner(configFile string) *Runner {
 	// ---------------------------------------------------------------------------------------------
 	// Init runner macros
 	for _, cmd := range toReturn.commandQueue {
+		if config.Command[cmd] == nil {
+			fmt.Printf("Fatal Error, no command '%s' definition found in ini file\n", cmd)
+			os.Exit(1)
+		}
 		InitMacros(cmd, config.FieldString("ReqBody", cmd))
 		InitMacros(cmd, config.FieldString("ReqUrl", cmd))
 		InitMacros(cmd, config.FieldString("EncryptIv", cmd))
 		InitMacros(cmd, config.FieldString("EncryptKey", cmd))
+
 		for _, session_var := range config.Command[cmd].SessionVar {
 			s := strings.SplitN(session_var, " ", 2) // s = ['CUSTNO', '<extId>{%VAL}</extId>']
 			InitMacros(cmd, s[1])
@@ -188,6 +197,54 @@ func (runner *Runner) EstimateSessionTime() time.Duration {
 	return dur
 }
 
+func (runner *Runner) doFunc(funcName string, args []string) string {
+	//this allows custom javascript functions to be created by the tester
+	vm := otto.New()
+
+	// This is where the magic happens!
+	// vm.SetDebuggerHandler(func(o *otto.Otto) {
+	// 	// The `Context` function is another hidden gem - I'll talk about that in
+	// 	// another post.
+	// 	// c := o.Context()
+
+	// 	// // Here, we go through all the symbols in scope, adding their names to a
+	// 	// // list.
+	// 	// var a []string
+	// 	// for k := range c.Symbols {
+	// 	// 	a = append(a, k)
+	// 	// }
+
+	// 	// sort.Strings(a)
+
+	// 	// Print out the symbols in scope.
+	// 	// fmt.Printf("symbols in scope: %v\n", a)
+	// 	// fmt.Printf("\n\n DEBUGGER CALLED %v\n\n", c.Stacktrace)
+	// })
+
+	for _, importPath := range runner.config.UserFunctions.Import {
+		dat, err := ioutil.ReadFile(importPath) //the javascript functions available are in this file
+		if err != nil {
+			println("Can't open file", importPath)
+			os.Exit(1)
+		}
+		if _, err := vm.Run(dat); err != nil { //load the javascript functions into memory
+			panic(err)
+		}
+
+	}
+
+	b := make([]interface{}, len(args)) //convert []string to []interface {} so we can send as varadic b...
+	for i := range args {
+		b[i] = args[i]
+	}
+
+	r, err := vm.Call(funcName, nil, b...)
+	if err != nil {
+		panic(err)
+	}
+	return r.String()
+
+}
 func (runner *Runner) httpReq(inputLine string, config *Config, command string, baseUrl string, cookieMap map[string]*http.Cookie, sessionVars map[string]string, reqTime time.Time) (*http.Request, *http.Response, error) {
 
 	//this is where all the good stuff happens
@@ -202,9 +259,15 @@ func (runner *Runner) httpReq(inputLine string, config *Config, command string, 
 		urlx = baseUrl + urlx
 	}
 
-	body = RunnerMacros(command, inputLine, sessionVars, reqTime, body)
-	urlx = RunnerMacros(command, inputLine, sessionVars, reqTime, urlx)
+	//findFuncVars will look for Func's
+	//then do string replace on Funcs
+	//and process Func and then assign to Session var
 
+	runner.findFuncVars(command, inputLine, config, sessionVars) //run javascript function macros and set any results as sessionVars
+
+	//end javascript function macros
+	body = RunnerMacros(command, inputLine, sessionVars, reqTime, body) //string replace the {%x} and {$x} macros with real values before HTTPRoundTrip call
+	urlx = RunnerMacros(command, inputLine, sessionVars, reqTime, urlx)
 	reqReader := io.Reader(bytes.NewReader([]byte(body)))
 	requestContentSize := int64(len(body))
 
@@ -309,7 +372,7 @@ func (runner *Runner) httpReq(inputLine string, config *Config, command string, 
 		}
 	}
 
-	resp, err := httpRoundTrip(runner.httpTransport, req)
+	resp, err := httpRoundTrip(runner.httpTransport, req) //actually make the HTTP request here
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s %s ERROR %s: %v\n", command, inputLine, time.Now(), err.Error())
 	} else if verbose {
@@ -628,6 +691,40 @@ func (runner *Runner) findSessionVars(command string, config *Config, input stri
 	return foundSessionVars, foundMustCaptures
 
 }
+func replaceSessionVars(sessionVars map[string]string, input string) string {
+	toReturn := input
+	for k, v := range sessionVars {
+		toReplace := "{%" + k + "}"
+		toReturn = strings.Replace(toReturn, toReplace, v, -1)
+	}
+	return toReturn
+}
+
+func (runner *Runner) findFuncVars(command string, inputLine string, config *Config, sessionVars map[string]string) {
+	// set any session vars listed for current command, e.g. SessionVar = XTOKEN detail="(.+)"
+	for _, func_var := range config.Command[command].FuncVar {
+		s := strings.SplitN(func_var, " ", 2) // s = ['ADDTEST', 'add(1,2,3)"']
+		svar := s[0]                          //ADDTEST
+		startArgs := strings.Index(s[1], "(") //WARNING: this assumes that () characters are not part of the input arguments to the js func macro
+		endArgs := strings.Index(s[1], ")")
+		sfunc := s[1][:startArgs]            //add
+		sargs := s[1][startArgs+1 : endArgs] //1,2,3
+
+		args := strings.Split(sargs, ",")
+		for k, v := range args {
+
+			//args[k] = replaceSessionVars(sessionVars, v)
+			arg := v
+			if len(v) > 1 && (v[0] == '{' && (v[1] == '%' || v[1] == '$')) {
+				arg = _runnerMacro(command, v, inputLine, sessionVars, time.Now()) //need to remove command, inputLine & time.Time argument when we finish converting to JS macros
+			}
+			args[k] = arg
+		}
+		answer := runner.doFunc(sfunc, args)
+		sessionVars[svar] = answer // ADDTEST = 6
+	}
+	return
+} //end findFuncVars
 
 func (runner *Runner) doLog(command string, config *Config, requestMethod string, tcpResponse []byte, httpResponse *http.Response, result *Result, err error, startTime time.Time, shortUrl string, inputLine string, clientId int, stepCounter int, lastSession string, sessionVars map[string]string) (string, bool) {
 

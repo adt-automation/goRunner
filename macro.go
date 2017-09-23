@@ -321,6 +321,7 @@ func runnerMacro(command string, declaration string, inputData string, sessionVa
 	ssrx, _ := regexp.Compile("\\[(\\d+):(\\d+)\\]}")
 	declSubstr := ssrx.FindStringSubmatch(declaration)
 	if len(declSubstr) == 0 {
+		//This function gets passed in a {%X} and {$X} variable reference (i.e. declaration), looks it up the hash table and returns the string value
 		return _runnerMacro(command, declaration, inputData, sessionVars, reqTime)
 	} else {
 		declaration = strings.Replace(declaration, declSubstr[0], "}", 1)
