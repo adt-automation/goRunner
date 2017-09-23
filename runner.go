@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/robertkrimen/otto"
+	//try v8 engine
 )
 
 // -------------------------------------------------------------------------------------------------
@@ -95,10 +96,15 @@ func NewRunner(configFile string) *Runner {
 	// ---------------------------------------------------------------------------------------------
 	// Init runner macros
 	for _, cmd := range toReturn.commandQueue {
+		if config.Command[cmd] == nil {
+			fmt.Printf("Fatal Error, no command '%s' definition found in ini file\n", cmd)
+			os.Exit(1)
+		}
 		InitMacros(cmd, config.FieldString("ReqBody", cmd))
 		InitMacros(cmd, config.FieldString("ReqUrl", cmd))
 		InitMacros(cmd, config.FieldString("EncryptIv", cmd))
 		InitMacros(cmd, config.FieldString("EncryptKey", cmd))
+
 		for _, session_var := range config.Command[cmd].SessionVar {
 			s := strings.SplitN(session_var, " ", 2) // s = ['CUSTNO', '<extId>{%VAL}</extId>']
 			InitMacros(cmd, s[1])
@@ -211,9 +217,7 @@ func (runner *Runner) doFunc(funcName string, args []string) string {
 	for i := range args {
 		b[i] = args[i]
 	}
-	fmt.Println("BEFORE CALL")
 	r, err := vm.Call(funcName, nil, b...)
-	fmt.Println("AFTER CALL")
 	if err != nil {
 		panic(err)
 	}
@@ -237,7 +241,7 @@ func (runner *Runner) httpReq(inputLine string, config *Config, command string, 
 	//findFuncVars will look for Func's
 	//then do string replace on Funcs
 	//and process Func and then assign to Session var
-	runner.findFuncVars(command, config, sessionVars) //run javascript function macros and set any results as sessionVars
+	runner.findFuncVars(command, inputLine, config, sessionVars) //run javascript function macros and set any results as sessionVars
 
 	//end javascript function macros
 	body = RunnerMacros(command, inputLine, sessionVars, reqTime, body) //string replace the {%x} and {$x} macros with real values before HTTPRoundTrip call
@@ -665,8 +669,16 @@ func (runner *Runner) findSessionVars(command string, config *Config, input stri
 	return foundSessionVars, foundMustCaptures
 
 }
+func replaceSessionVars(sessionVars map[string]string, input string) string {
+	toReturn := input
+	for k, v := range sessionVars {
+		toReplace := "{%" + k + "}"
+		toReturn = strings.Replace(toReturn, toReplace, v, -1)
+	}
+	return toReturn
+}
 
-func (runner *Runner) findFuncVars(command string, config *Config, sessionVars map[string]string) {
+func (runner *Runner) findFuncVars(command string, inputLine string, config *Config, sessionVars map[string]string) {
 	// set any session vars listed for current command, e.g. SessionVar = XTOKEN detail="(.+)"
 	for _, func_var := range config.Command[command].FuncVar {
 		s := strings.SplitN(func_var, " ", 2) // s = ['ADDTEST', 'add(1,2,3)"']
@@ -675,7 +687,17 @@ func (runner *Runner) findFuncVars(command string, config *Config, sessionVars m
 		endArgs := strings.Index(s[1], ")")
 		sfunc := s[1][:startArgs]            //add
 		sargs := s[1][startArgs+1 : endArgs] //1,2,3
-		answer := runner.doFunc(sfunc, strings.Split(sargs, ","))
+
+		args := strings.Split(sargs, ",")
+		for k, v := range args {
+			//args[k] = replaceSessionVars(sessionVars, v)
+			arg := v
+			if len(v) > 1 && (v[0] == '{' && (v[1] == '%' || v[1] == '$')) {
+				arg = _runnerMacro(command, v, inputLine, sessionVars, time.Now()) //need to remove command, inputLine & time.Time argument when we finish converting to JS macros
+			}
+			args[k] = arg
+		}
+		answer := runner.doFunc(sfunc, args)
 		sessionVars[svar] = answer // ADDTEST = 6
 	}
 	return

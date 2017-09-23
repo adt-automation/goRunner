@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,13 +29,13 @@ func TestXxx(*testing.T) {
 	}()
 
 	go http.ListenAndServe(":9009", nil)
-	http.HandleFunc("/main", Landing)
+	//	http.HandleFunc("/main", Landing)
 	http.HandleFunc("/GetSession", ReturnSession)
 	http.HandleFunc("/reqapi/check/token", HandleToken)
 	http.HandleFunc("/reqapi/test/account/pass", HandleTicket)
 	http.HandleFunc("/reqapi/test/account/pass/", HandleTicket2)
-	http.HandleFunc("/reqapi/test/shellVar", HandleShellVar)
-	http.HandleFunc("/reqapi/test/upload", Landing)
+	//http.HandleFunc("/reqapi/test/shellVar", HandleShellVar)
+	//	http.HandleFunc("/reqapi/test/upload", Landing)
 	http.HandleFunc("/general", General)
 	os.Setenv("shellVar", "test123")
 
@@ -65,35 +66,6 @@ func TestXxx(*testing.T) {
 	runner.Wait()
 	runner.Exit()
 
-	/*
-			baseUrlFilter := regexp.MustCompile(baseUrl)
-
-
-			transportConfig := &tls.Config{InsecureSkipVerify: true} //allow wrong ssl certs
-			tr := &http.Transport{TLSClientConfig: transportConfig}
-			tr.ResponseHeaderTimeout = time.Second * time.Duration(30) //timeout in seconds
-			var stopTime time.Time                                     // client loops will work to the end of trafficChannel unless we explicitly init a stopTime
-			result := &runner.Result{}
-			results[0] = result
-			msDelay := 0
-			grep1, grep2 := "", ""
-			id := "123"
-			clientId := 0
-			var cookieMap = make(map[string]*http.Cookie)
-			var sessionVars = make(map[string]string)
-			overallStartTime := time.Now()
-			d := runner.Delimeter
-			fmt.Printf("startTime%vcommand%vnextCommand%vstep%vrequestType%vsessionKey%vsession%vgrep1%vgrep2%vid%vshortUrl%vstatusCode%vsessionVarsOk%vclientId%vbyteSize%vserver%vduration%vserverDuration\n", d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d)
-		//	runner.DoReq(0, id, configuration, result, clientId, baseUrl, baseUrlFilter, msDelay, tr, cookieMap, sessionVars, grep1, grep2, stopTime, 0.0) //val,resp, err
-
-
-	*/
-	//	results := make(map[int]*runner.Result)
-	//				result := &runner.Result{}
-	//			results[0] = result
-	//	message, exitCode := runner.GetResults(results, time.Now())
-
-	//	runner.PrintResults(message, overallStartTime)
 	exitCode := 0
 	os.Exit(int(exitCode))
 
@@ -106,9 +78,9 @@ func ReturnSession(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, "Return SessionVariable, TokenValue=TOKEN, UserID in header")
 }
 
-func Landing(w http.ResponseWriter, r *http.Request) {
-	io.WriteString(w, "This is the Landing Page Body")
-}
+//func Landing(w http.ResponseWriter, r *http.Request) {
+//	io.WriteString(w, "This is the Landing Page Body")
+//}
 
 func HandleToken(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
@@ -144,16 +116,34 @@ func HandleTicket2(w http.ResponseWriter, r *http.Request) {
 	pathArr := strings.SplitN(r.URL.RequestURI()[1:] /*trim the first slash*/, "/", -1)
 	fmt.Fprintf(w, "PATH=%v\n", pathArr[4])
 }
-func HandleShellVar(w http.ResponseWriter, r *http.Request) {
-	shellVar := r.URL.Query().Get("shellVar")
-	fmt.Fprintf(w, "%v\n", shellVar)
-}
+
+//func HandleShellVar(w http.ResponseWriter, r *http.Request) {
+//	shellVar := r.URL.Query().Get("shellVar")
+//	fmt.Fprintf(w, "%v\n", shellVar)
+//}
 func General(w http.ResponseWriter, r *http.Request) {
 	testAnswer := r.URL.Query().Get("testAnswer")     //add(2,3) = 5
 	actualAnswer := r.URL.Query().Get("actualAnswer") //  5
+	clientFile, _, err := r.FormFile("file")
+	if err == nil {
+		//optionally test file upload
+		var buff bytes.Buffer
+		fileSize, err := buff.ReadFrom(clientFile)
+		if err == nil {
+			w.WriteHeader(http.StatusAccepted)
+			fmt.Fprintf(w, "Success fileSize=%v\n", fileSize)
+		} else {
+			w.WriteHeader(http.StatusNotAcceptable)
+			fmt.Fprintf(w, "Failure fileSize=%v\n", fileSize)
+		}
+		return
+	}
+
 	if testAnswer == actualAnswer {
-		fmt.Fprintf(w, "Success %v\n", testAnswer)
+		w.WriteHeader(http.StatusAccepted)
+		fmt.Fprintf(w, "Success %v %v\n", testAnswer, r.ContentLength)
 	} else {
-		fmt.Fprintf(w, "Failure %v\n", testAnswer)
+		w.WriteHeader(http.StatusNotAcceptable)
+		fmt.Fprintf(w, "Failure %v %v\n", testAnswer, r.ContentLength)
 	}
 }

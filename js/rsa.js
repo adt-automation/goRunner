@@ -1846,19 +1846,30 @@ var rsa;
         return rsakey.encrypt(text);
     };
 
+    rsa.encryptIt3 = function(text,n,e){
+	var jkey='{"n":"'+n+'","e":"'+e+'"}';
+	return rsa.encryptHex(text,jkey).replace(/"/g,'')
+    }
+
+    rsa.encryptThenDecryptIt2 = function(text,jkey){
+	return rsa.decryptHex(rsa.encryptHex(text,jkey),jkey).replace(/"/g,'')
+    }
+
     rsa.decryptHex = function(ctext, jkey) {
       var key = JSON.parse(jkey);
         var rsakey = new RSAKey();
         rsakey.setPublic(key.n, key.e);
         rsakey.setPrivate(key.n, key.e, key.d);
-        return rsakey.decrypt(ctext);
+        return rsakey.decrypt(ctext).replace(/"/g,'');
     };
 
     // keyLength in bytes
     rsa.genKey = function(keyLength) {
         var key = {};
         var rsakey = new RSAKey();
-        rsakey.generate(keyLength, "10001");
+
+	rsakey.generate(keyLength, "10001");
+
         key.n = rsakey.n.toString(16);
         key.d = rsakey.d.toString(16);
         key.e = rsakey.e.toString(16);
@@ -1870,7 +1881,7 @@ var rsa;
 
 })(rsa || (rsa = {}));
 
-
+//console.log("DONE");
 // var k = rsa.genKey(1024);
 
 // var enc = rsa.encryptHex("toto", k);

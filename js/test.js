@@ -1,4 +1,3 @@
-
 function add(a, b, c) {
     //all goRunner input arguments to javascript are strings
     // var key = {}
