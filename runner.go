@@ -201,6 +201,26 @@ func (runner *Runner) doFunc(funcName string, args []string) string {
 	//this allows custom javascript functions to be created by the tester
 	vm := otto.New()
 
+	// This is where the magic happens!
+	// vm.SetDebuggerHandler(func(o *otto.Otto) {
+	// 	// The `Context` function is another hidden gem - I'll talk about that in
+	// 	// another post.
+	// 	// c := o.Context()
+
+	// 	// // Here, we go through all the symbols in scope, adding their names to a
+	// 	// // list.
+	// 	// var a []string
+	// 	// for k := range c.Symbols {
+	// 	// 	a = append(a, k)
+	// 	// }
+
+	// 	// sort.Strings(a)
+
+	// 	// Print out the symbols in scope.
+	// 	// fmt.Printf("symbols in scope: %v\n", a)
+	// 	// fmt.Printf("\n\n DEBUGGER CALLED %v\n\n", c.Stacktrace)
+	// })
+
 	for _, importPath := range runner.config.UserFunctions.Import {
 		dat, err := ioutil.ReadFile(importPath) //the javascript functions available are in this file
 		if err != nil {
@@ -217,6 +237,7 @@ func (runner *Runner) doFunc(funcName string, args []string) string {
 	for i := range args {
 		b[i] = args[i]
 	}
+
 	r, err := vm.Call(funcName, nil, b...)
 	if err != nil {
 		panic(err)
@@ -241,6 +262,7 @@ func (runner *Runner) httpReq(inputLine string, config *Config, command string, 
 	//findFuncVars will look for Func's
 	//then do string replace on Funcs
 	//and process Func and then assign to Session var
+
 	runner.findFuncVars(command, inputLine, config, sessionVars) //run javascript function macros and set any results as sessionVars
 
 	//end javascript function macros
@@ -690,6 +712,7 @@ func (runner *Runner) findFuncVars(command string, inputLine string, config *Con
 
 		args := strings.Split(sargs, ",")
 		for k, v := range args {
+
 			//args[k] = replaceSessionVars(sessionVars, v)
 			arg := v
 			if len(v) > 1 && (v[0] == '{' && (v[1] == '%' || v[1] == '$')) {
