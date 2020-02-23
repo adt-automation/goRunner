@@ -2,8 +2,6 @@ The goRunner tool can read in csv data to drive a sequence of API calls. These c
 
 goRunner was developed in the UNIX tradition to operate as a filter. It can be used in any pipeline connected to text stream inputs and outputs.
 ```
-Write programs that do one thing and do it well.
-Write programs to work together.
 Write programs to handle text streams, because that is a universal interface.
 ```
 
