@@ -11,6 +11,8 @@ package main
 //launchctl limit maxfiles 999990
 //ulimit -n 999998
 
+//to build"
+//GOOS=linux go build -o goRunner.linux -ldflags "-s -w -X main.Build=${BUILD}"
 import (
 	"bufio"
 	"flag"
@@ -114,7 +116,7 @@ func main() {
 	}
 
 	if verbose {
-		println("verbose")
+		println("verbose: build=", Build)
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -160,8 +162,10 @@ func main() {
 		nbDelimeters := 0
 		firstTime := true
 		for scanner.Scan() {
+			fmt.Printf("scanner.Scan\n")
 			inputLine := scanner.Text()
 			if firstTime {
+				fmt.Printf("START FIRST_TIME\n")
 				firstTime = false
 				nbDelimeters = strings.Count(inputLine, delimeter)
 				runner.printSessionSummary()
@@ -169,6 +173,7 @@ func main() {
 					PrintLogHeader(delimeter, nbDelimeters+1)
 					runner.PrintSessionLog() // ???
 				}
+				fmt.Printf("END FIRST_TIME\n")
 			}
 			if strings.Count(inputLine, delimeter) != nbDelimeters {
 				fmt.Fprintf(os.Stderr, "\n/!\\ input lines must have same number of fields /!\\\n")
@@ -177,6 +182,7 @@ func main() {
 			if len(inputLine) == 0 {
 				break //quit when we get an empty input line
 			}
+			fmt.Printf("inputLine=%v\n\n", inputLine)
 			trafficChannel <- inputLine
 		}
 	}

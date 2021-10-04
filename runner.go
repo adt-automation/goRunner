@@ -360,13 +360,13 @@ func (runner *Runner) httpReq(inputLine string, config *Config, command string, 
 		}
 	*/
 	if verbose {
-		dumpBody := requestContentSize <= 512
-		dump, err := httputil.DumpRequestOut(req, dumpBody)
+		//dumpBody := requestContentSize <= 512
+		dump, err := httputil.DumpRequestOut(req, true)
 		if err == nil {
-			fmt.Fprintf(os.Stderr, "REQUEST DUMP==============\n\n%v\n", string(dump))
-			if !dumpBody {
-				fmt.Fprintf(os.Stderr, "============== UPLOADING %db REQUEST BODY ======\n", requestContentSize)
-			}
+			fmt.Fprintf(os.Stderr, "REQUEST DUMP==============\n%v\n\n", string(dump))
+			//if !dumpBody {
+			//	fmt.Fprintf(os.Stderr, "============== UPLOADING %db REQUEST BODY ======\n", requestContentSize)
+			//}
 		} else {
 			fmt.Fprintf(os.Stderr, "REQUEST DUMP ERROR========\n\n%v\n", err)
 		}
@@ -378,7 +378,7 @@ func (runner *Runner) httpReq(inputLine string, config *Config, command string, 
 	} else if verbose {
 		dump2, err2 := httputil.DumpResponse(resp, true)
 		if err2 != nil {
-			fmt.Fprintf(os.Stderr, "%s RESPONSE DUMP ERROR========\n\n%v\n", command, err2)
+			fmt.Fprintf(os.Stderr, "%s RESPONSE DUMP ERROR========\n%v\n", command, err2)
 		} else {
 			fmt.Fprintf(os.Stderr, "RESPONSE DUMP==============\n%v\n\n", string(dump2))
 		}
