@@ -80,6 +80,7 @@ func init() {
 	defaultUsage := flag.Usage
 
 	flag.Usage = func() {
+		println("github.com/adt-automation/goRunner ", Build)
 		defaultUsage()
 	}
 }
@@ -92,6 +93,9 @@ func main() {
 	if headerExit {
 		PrintLogHeader(delimeter, 0)
 		os.Exit(0)
+	}
+	if *verbose {
+		println("Build #", Build)
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -114,10 +118,6 @@ func main() {
 
 	if os.Getenv("GOMAXPROCS") == "" {
 		runtime.GOMAXPROCS(runtime.NumCPU())
-	}
-
-	if verbose {
-		println("verbose: build=", Build)
 	}
 
 	// ---------------------------------------------------------------------------------------------
