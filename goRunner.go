@@ -94,7 +94,7 @@ func main() {
 		PrintLogHeader(delimeter, 0)
 		os.Exit(0)
 	}
-	if *verbose {
+	if verbose {
 		println("Build #", Build)
 	}
 
