@@ -12,6 +12,7 @@ package main
 //ulimit -n 999998
 
 //to build"
+//BUILD=`git rev-parse HEAD`
 //GOOS=linux go build -o goRunner.linux -ldflags "-s -w -X main.Build=${BUILD}"
 import (
 	"bufio"
