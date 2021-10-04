@@ -1,9 +1,7 @@
-The goRunner tool can read in csv data to drive a sequence of API calls. These calls are defined in a custom API config file. Then as each API call completes, a row of timestamped csv data is written (similar to the apache log format).
+The goRunner tool can read in csv data (along with optional macro definitions) to drive a sequence of API calls and is commonly used as a script driven load testing tool. These calls are defined in a custom API config file. Then as each API call completes, a row of timestamped csv data is written (similar to the apache log format).
 
 goRunner was developed in the UNIX tradition to operate as a filter. It can be used in any pipeline connected to text stream inputs and outputs.
 ```
-Write programs that do one thing and do it well.
-Write programs to work together.
 Write programs to handle text streams, because that is a universal interface.
 ```
 
