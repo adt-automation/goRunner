@@ -326,10 +326,10 @@ func runnerMacro(command string, declaration string, inputData string, sessionVa
 	} else {
 		declaration = strings.Replace(declaration, declSubstr[0], "}", 1)
 		result := _runnerMacro(command, declaration, inputData, sessionVars, reqTime)
-		fmt.Printf("result=%v\n", result)
+		//fmt.Printf("result=%v\n", result)
 		ss0, _ := strconv.Atoi(declSubstr[1])
 		ss1, _ := strconv.Atoi(declSubstr[2])
-		fmt.Printf("ss0=%v ss1=%v\n\n", ss0, ss1)
+		//fmt.Printf("ss0=%v ss1=%v\n\n", ss0, ss1)
 		return result[ss0:ss1]
 	}
 }
