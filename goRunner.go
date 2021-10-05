@@ -178,6 +178,8 @@ func main() {
 			}
 			if strings.Count(inputLine, delimeter) != nbDelimeters {
 				fmt.Fprintf(os.Stderr, "\n/!\\ input lines must have same number of fields /!\\\n")
+				fmt.Fprintf(os.Stderr, "inputLine=%v\ndelimeter=%v\nnbDelimeters=%v\n", inputLine, delimeter, nbDelimeters)
+
 				runner.Exit()
 			}
 			if len(inputLine) == 0 {
