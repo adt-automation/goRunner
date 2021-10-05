@@ -378,9 +378,9 @@ func (runner *Runner) httpReq(inputLine string, config *Config, command string, 
 	} else if verbose {
 		dump2, err2 := httputil.DumpResponse(resp, true)
 		if err2 != nil {
-			fmt.Fprintf(os.Stderr, "%s RESPONSE DUMP ERROR========\n%v\n", command, err2)
+			fmt.Fprintf(os.Stderr, "%s RESPONSE DUMP ERROR========\n%v\n%v%v\n", inputLine, command, err2)
 		} else {
-			fmt.Fprintf(os.Stderr, "RESPONSE DUMP==============\n%v\n\n", string(dump2))
+			fmt.Fprintf(os.Stderr, "RESPONSE DUMP==============\n%v\n%v\n\n", inputLine, string(dump2))
 		}
 	}
 
