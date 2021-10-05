@@ -363,12 +363,12 @@ func (runner *Runner) httpReq(inputLine string, config *Config, command string, 
 		//dumpBody := requestContentSize <= 512
 		dump, err := httputil.DumpRequestOut(req, true)
 		if err == nil {
-			fmt.Fprintf(os.Stderr, "REQUEST DUMP==============\n%v\n\n", string(dump))
+			fmt.Fprintf(os.Stderr, "REQUEST DUMP==============\n%v\n%v\n\n", inputLine, string(dump))
 			//if !dumpBody {
 			//	fmt.Fprintf(os.Stderr, "============== UPLOADING %db REQUEST BODY ======\n", requestContentSize)
 			//}
 		} else {
-			fmt.Fprintf(os.Stderr, "REQUEST DUMP ERROR========\n\n%v\n", err)
+			fmt.Fprintf(os.Stderr, "REQUEST DUMP ERROR========\n%v\n\n%v\n", inputLine, err)
 		}
 	}
 
