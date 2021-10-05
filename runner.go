@@ -873,7 +873,7 @@ OUTPUTLOG:
 	}
 
 	runner.stdoutMutex.Lock()
-	fmt.Printf("OUT%v%c%s%c%d%c%s%c%s%c%s%c%s%c%s%c%d%c%v%c%d%c%d%c%v%c%.3f%c%.3f%c%s%s\n", startTime.Format(layout), d, command, d, stepCounter, d, requestMethod, d, sessionKey, d, session, d, inputSplit[0], d, shortUrl, d, statusCode, d, foundSessionVars, d, clientId, d, byteSize, d, server, d, duration, d, serverTime, d, Build, inputLog)
+	fmt.Printf("%v%c%s%c%d%c%s%c%s%c%s%c%s%c%s%c%d%c%v%c%d%c%d%c%v%c%.3f%c%.3f%c%s%s\n", startTime.Format(layout), d, command, d, stepCounter, d, requestMethod, d, sessionKey, d, session, d, inputSplit[0], d, shortUrl, d, statusCode, d, foundSessionVars, d, clientId, d, byteSize, d, server, d, duration, d, serverTime, d, Build, inputLog)
 	runner.stdoutMutex.Unlock()
 
 	return session, continueSession
